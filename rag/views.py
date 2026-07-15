@@ -18,7 +18,6 @@ from .serializers import (
 from .tasks import process_document_task
 from .graph import AgentState
 from .tools import set_embedding_model
-from sentence_transformers import SentenceTransformer
 
 # Lazy-load embedding model (only when first used)
 _embedding_model = None
@@ -27,6 +26,7 @@ _rag_graph = None
 def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
+        from sentence_transformers import SentenceTransformer
         _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         set_embedding_model(_embedding_model)
     return _embedding_model
