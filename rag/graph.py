@@ -233,13 +233,14 @@ def grade_documents(state: AgentState) -> dict:
 def web_search(state: AgentState) -> dict:
     """
     Perform web search for supplementary information.
+    Gracefully handles missing API keys, timeouts, and network errors.
     """
     state["current_step"] = "web_search"
     state["reasoning_trace"].append("[WEB] Performing web search...")
-    
+
     try:
         web_results = web_search_tool.invoke({"query": state["question"]})
-        
+
         # Convert web results to document-like format and store in web_documents
         state["web_documents"] = [
             {
@@ -252,15 +253,21 @@ def web_search(state: AgentState) -> dict:
             }
             for idx, result in enumerate(web_results)
         ]
-        
-        state["reasoning_trace"].append(
-            f"[WEB] Found {len(web_results)} web results"
-        )
-        
+
+        if len(web_results) > 0:
+            state["reasoning_trace"].append(
+                f"[WEB] Found {len(web_results)} web results"
+            )
+        else:
+            state["reasoning_trace"].append(
+                "[WEB] No web results found or web search unavailable. Proceeding with document context."
+            )
+
     except Exception as e:
-        state["reasoning_trace"].append(f"[WEB] Error: {str(e)}")
+        # This should rarely happen now due to web_search_tool's defensive error handling
+        state["reasoning_trace"].append(f"[WEB] Unexpected error: {str(e)}. Proceeding without web context.")
         state["web_documents"] = []
-        
+
     return {"web_documents": state.get("web_documents", []), "current_step": state["current_step"], "reasoning_trace": state["reasoning_trace"]}
 
 

@@ -175,23 +175,25 @@ def web_search_tool(query: str) -> List[dict]:
     """
     Search the web for information when the answer is not in local documents.
     Uses Tavily API for real-time information retrieval.
-    
+    Gracefully degrades on API unavailability, network errors, or timeout.
+
     Args:
         query: The search query
-    
+
     Returns:
-        List of search results with title, snippet, and URL
+        List of search results with title, snippet, and URL. Empty list if web search unavailable.
     """
     from tavily import TavilyClient
-    
+
     api_key = os.getenv('TAVILY_API_KEY')
     if not api_key:
-        raise ValueError("TAVILY_API_KEY not found in environment variables")
-    
+        logger.warning("⚠️ TAVILY_API_KEY not configured. Web search unavailable. Proceeding with document context only.")
+        return []
+
     try:
         client = TavilyClient(api_key=api_key)
         response = client.search(query, max_results=5)
-        
+
         results = []
         for result in response.get('results', []):
             results.append({
@@ -200,11 +202,19 @@ def web_search_tool(query: str) -> List[dict]:
                 'url': result.get('url', ''),
                 'relevance_score': result.get('score', 0),
             })
-        
+
+        logger.info(f"✅ Web search succeeded: {len(results)} results for query '{query[:50]}'")
         return results
-    
+
+    except TimeoutError as e:
+        logger.warning(f"⚠️ Web search timeout (network error). Proceeding without web context. Details: {str(e)}")
+        return []
+    except ConnectionError as e:
+        logger.warning(f"⚠️ Web search connection error. Proceeding without web context. Details: {str(e)}")
+        return []
     except Exception as e:
-        raise ValueError(f"Web search failed: {str(e)}")
+        logger.warning(f"⚠️ Web search failed (Tavily API error). Proceeding without web context. Details: {str(e)}")
+        return []
 
 
 @tool
