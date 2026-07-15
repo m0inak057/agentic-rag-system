@@ -33,23 +33,33 @@ class AgentState(TypedDict, total=False):
     use_web_search: bool
     rewrite_count: int
     cited_sources: List[Dict[str, Any]]
+    web_documents: List[Dict[str, Any]]
 
 
 def route_query(state: AgentState) -> dict:
     """
     Route the user's query to the appropriate tool or directly to generation.
     Decides: "Do I need vector search, web search, or can I answer directly?"
+    If a document or collection has been provided, ALWAYS try document search first.
     """
     state["current_step"] = "routing_query"
     state["reasoning_trace"].append(f"[ROUTE] Analyzing query: '{state['question']}'")
     
-    # Simple heuristic: if question contains keywords like "web", "latest", "news", use web search
-    web_keywords = ["latest", "recent", "news", "today", "current", "web"]
-    if any(keyword in state["question"].lower() for keyword in web_keywords):
-        state["use_web_search"] = True
-        state["reasoning_trace"].append("[ROUTE] → Web search needed for current information")
+    # If the user has provided a document/collection, always use document search first
+    has_document = state.get("document_id") or state.get("collection_id")
+    
+    if has_document:
+        # User uploaded a PDF — always search the document first, never go to web directly
+        state["use_web_search"] = False
+        state["reasoning_trace"].append("[ROUTE] → Document provided, will use document search")
     else:
-        state["reasoning_trace"].append("[ROUTE] → Document search will be used")
+        # No document provided: use web search heuristics
+        web_keywords = ["latest", "recent", "news", "today", "current", "web"]
+        if any(keyword in state["question"].lower() for keyword in web_keywords):
+            state["use_web_search"] = True
+            state["reasoning_trace"].append("[ROUTE] → Web search needed for current information")
+        else:
+            state["reasoning_trace"].append("[ROUTE] → Document search will be used")
         
     return {"use_web_search": state.get("use_web_search", False), "current_step": state["current_step"], "reasoning_trace": state["reasoning_trace"]}
 
@@ -222,7 +232,7 @@ def grade_documents(state: AgentState) -> dict:
 
 def web_search(state: AgentState) -> dict:
     """
-    Perform web search when local documents are not sufficient.
+    Perform web search for supplementary information.
     """
     state["current_step"] = "web_search"
     state["reasoning_trace"].append("[WEB] Performing web search...")
@@ -230,13 +240,14 @@ def web_search(state: AgentState) -> dict:
     try:
         web_results = web_search_tool.invoke({"query": state["question"]})
         
-        # Convert web results to document-like format
-        state["retrieved_documents"] = [
+        # Convert web results to document-like format and store in web_documents
+        state["web_documents"] = [
             {
-                'id': idx,
+                'id': idx + 1000,  # Offset to avoid overlaps with document chunk IDs
                 'text': f"{result['title']}\n{result['snippet']}",
                 'url': result.get('url'),
-                'combined_score': result.get('relevance_score', 0),
+                'title': result.get('title'),
+                'combined_score': 1.0,
                 'source': 'web',
             }
             for idx, result in enumerate(web_results)
@@ -248,13 +259,14 @@ def web_search(state: AgentState) -> dict:
         
     except Exception as e:
         state["reasoning_trace"].append(f"[WEB] Error: {str(e)}")
+        state["web_documents"] = []
         
-    return {"retrieved_documents": state.get("retrieved_documents", []), "current_step": state["current_step"], "reasoning_trace": state["reasoning_trace"]}
+    return {"web_documents": state.get("web_documents", []), "current_step": state["current_step"], "reasoning_trace": state["reasoning_trace"]}
 
 
 def generate_answer(state: AgentState) -> dict:
     """
-    Generate the final answer based on retrieved documents and conversation history.
+    Generate the final answer based on retrieved documents, web search results, and conversation history.
     Uses Gemini API for generation.
     """
     from .unified_llm import get_unified_llm
@@ -267,10 +279,31 @@ def generate_answer(state: AgentState) -> dict:
         
         # Compile context from retrieved documents
         docs_to_use = state.get("graded_documents") if state.get("graded_documents") else state.get("retrieved_documents", [])
-        context_text = "\n\n".join([
-            f"[Source {idx+1}] [{doc.get('document_title', 'Unknown')} (Page {doc.get('page_number', '?')})]\n{doc['text'][:500]}"
-            for idx, doc in enumerate(docs_to_use[:5])
-        ])
+        docs_to_use = docs_to_use[:5]
+        num_docs = len(docs_to_use)
+        
+        context_text = ""
+        if num_docs > 0:
+            context_text = "\n\n".join([
+                f"[Source {idx+1}] [{doc.get('document_title', 'Unknown')} (Page {doc.get('page_number', '?')})]\n{doc['text'][:500]}"
+                for idx, doc in enumerate(docs_to_use)
+            ])
+        else:
+            context_text = "No relevant document chunks found."
+            
+        # Compile context from web results
+        web_docs = state.get("web_documents", [])
+        web_docs = web_docs[:5]
+        num_web = len(web_docs)
+        
+        web_context_text = ""
+        if num_web > 0:
+            web_context_text = "\n\n".join([
+                f"[Source {num_docs + idx + 1}] [Web Result: {doc.get('title', 'Unknown')}]\n{doc['text'][:500]}"
+                for idx, doc in enumerate(web_docs)
+            ])
+        else:
+            web_context_text = "No web search results available."
         
         # Build conversation history string
         history_text = ""
@@ -279,30 +312,31 @@ def generate_answer(state: AgentState) -> dict:
             for msg in state["conversation_history"][-3:]:  # Last 3 messages for context
                 history_text += f"- {msg['role']}: {msg['content'][:200]}\n"
         
-        # Construct the prompt
-        user_prompt = f"""You are a helpful AI assistant that answers questions based on provided documents.
-You can make reasonable inferences and connections from the context, but must ground everything in the provided information.
+        # Construct the prompt with instructions for combined response
+        user_prompt = f"""You are a helpful AI assistant that answers questions based on provided documents and web context.
 
-CRITICAL RULES:
-1. Base your answer primarily on the provided context
-2. You can make reasonable inferences, but they must follow from the context
-3. ALWAYS cite the source for facts using [N] notation
-4. If the question cannot be reasonably answered from the context, say so clearly
+CRITICAL ANSWER STRUCTURE:
+1. **Document Section**: First, answer the question based ONLY on the provided Context Documents (citing them as [1], [2], etc.). If a document/collection is provided but no relevant information is found in the documents (or no matching chunks are found), state clearly in this section: "No information regarding this query was found in the provided documents."
+2. **Additional Web Info**: Then, at the very end of your response, ALWAYS create a dedicated section titled:
+   `### Additional Web Information`
+   Under this section, summarize the relevant information found from the Web Context (citing them as [{num_docs + 1}], [{num_docs + 2}], etc., depending on the source numbers). If there are no web results, you can omit this section or state that no web info was found.
 
-CITATION FORMAT:
-- Use [1], [2], [3] etc. for each source document
-- Example: "The study [1] shows that..." or "Based on the evidence [1][2]..."
-- Only cite when directly referencing facts from that source
-- DO NOT cite document titles - only use bracketed numbers
+CITATION RULES:
+- Use standard brackets like [1], [2], etc. for citations.
+- Cite ONLY when directly referencing facts from that source.
+- DO NOT cite source titles, only use bracketed numbers.
 
 {history_text}
 
-Context Documents:
+Context Documents (Sources 1 to {num_docs}):
 {context_text}
+
+Web Context (Sources {num_docs + 1} to {num_docs + num_web}):
+{web_context_text}
 
 User Question: {state['question']}
 
-Please provide a helpful answer based on the context. Cite sources for key facts."""
+Please generate your response adhering strictly to the required structure and citation formats."""
         
         response = llm.generate(user_prompt)
         state["generation"] = response['text']
@@ -325,7 +359,7 @@ def extract_and_validate_citations(state: AgentState) -> dict:
 
     Actions:
     1. Extract all [N] citations from the answer
-    2. Validate they match the source documents provided
+    2. Validate they match the source documents or web search results provided
     3. Remove invalid citations
     4. Build structured sources array with metadata
     5. Store only sources that are actually cited
@@ -333,11 +367,22 @@ def extract_and_validate_citations(state: AgentState) -> dict:
     state["current_step"] = "validating_citations"
     answer = state.get("generation", "")
 
+    # Handle AIMessage objects (from LangChain) - extract plain text
+    if hasattr(answer, 'content'):
+        answer = answer.content
+    answer = str(answer) if answer is not None else ""
+
     docs_to_use = state.get("graded_documents", []) or state.get("retrieved_documents", [])
     docs_to_use = docs_to_use[:5]  # Only support up to 5 sources
+    num_docs = len(docs_to_use)
 
-    # Build a map of citation_number -> document metadata
+    web_docs = state.get("web_documents", [])
+    web_docs = web_docs[:5]
+
+    # Build a map of citation_number -> document or web metadata
     citation_map = {}
+    
+    # 1. Map document chunks
     for idx, doc in enumerate(docs_to_use):
         citation_num = idx + 1
         citation_map[str(citation_num)] = {
@@ -347,6 +392,20 @@ def extract_and_validate_citations(state: AgentState) -> dict:
             'document_title': doc.get('document_title', 'Unknown'),
             'page_number': doc.get('page_number'),
             'text_preview': doc.get('text', '')[:200],  # First 200 chars as preview
+            'url': None,
+        }
+        
+    # 2. Map web results
+    for idx, doc in enumerate(web_docs):
+        citation_num = num_docs + idx + 1
+        citation_map[str(citation_num)] = {
+            'citation_number': citation_num,
+            'chunk_id': doc.get('id'),
+            'document_id': None,
+            'document_title': f"Web: {doc.get('title', 'Search Result')}" if doc.get('title') else "Web Search Source",
+            'page_number': None,
+            'text_preview': doc.get('text', '')[:200],  # First 200 chars as preview
+            'url': doc.get('url'),
         }
 
     # Find all citations in the answer (patterns like [1], [2], [1][3], etc.)
@@ -442,26 +501,40 @@ def create_rag_graph(config: Optional[Dict[str, bool]] = None):
     )
 
     # From retrieve_documents
-    workflow.add_conditional_edges(
-        "retrieve_documents",
-        lambda state: "web_search" if state.get("use_web_search", False) else (
-            "grade_documents" if config['use_grading'] else "generate_answer"
-        )
-    )
+    def route_retrieve(state):
+        if state.get("use_web_search", False):
+            return "web_search"
+        if config['use_grading']:
+            return "grade_documents"
+        if state.get("document_id") or state.get("collection_id"):
+            return "web_search"
+        return "generate_answer"
 
-    # From grade_documents
-    workflow.add_conditional_edges(
-        "grade_documents",
-        lambda state: "generate_answer" if len(state.get("graded_documents", [])) > 0 else (
-            "generate_answer" if not config['use_rewriting'] else "rewrite_query"
-        )
-    )
+    workflow.add_conditional_edges("retrieve_documents", route_retrieve)
+
+    # From grade_documents: if we have relevant docs, generate/web_search; 
+    # if no relevant docs but retrieval returned something, still proceed with what we have
+    # (avoids getting stuck in rewrite loops that end up at web search)
+    def route_grade(state):
+        has_relevant = len(state.get("graded_documents", [])) > 0
+        has_retrieved = len(state.get("retrieved_documents", [])) > 0
+        if has_relevant or has_retrieved or not config['use_rewriting']:
+            if state.get("document_id") or state.get("collection_id"):
+                return "web_search"
+            return "generate_answer"
+        return "rewrite_query"
+
+    workflow.add_conditional_edges("grade_documents", route_grade)
 
     # From rewrite_query
-    workflow.add_conditional_edges(
-        "rewrite_query",
-        lambda state: "generate_answer" if state.get("rewrite_count", 0) > 2 else "retrieve_documents"
-    )
+    def route_rewrite(state):
+        if state.get("rewrite_count", 0) > 2:
+            if state.get("document_id") or state.get("collection_id"):
+                return "web_search"
+            return "generate_answer"
+        return "retrieve_documents"
+
+    workflow.add_conditional_edges("rewrite_query", route_rewrite)
 
     # From web_search
     workflow.add_edge("web_search", "generate_answer")

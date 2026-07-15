@@ -11,15 +11,24 @@ This module contains TWO pipelines:
 """
 
 import fitz  # PyMuPDF — fast and accurate PDF text extraction
-from sentence_transformers import SentenceTransformer
 from pgvector.django import CosineDistance
 from django.conf import settings
 from .models import Document, DocumentChunk, ChatConversation, ChatMessage
 
 # ─────────────────────────────────────────────────────────
-# Load models/clients ONCE when the server starts
+# Lazy-load embedding model (only when first used, avoids blocking at import)
 # ─────────────────────────────────────────────────────────
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+_embedding_model = None
+
+def _get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        from sentence_transformers import SentenceTransformer
+        _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+    return _embedding_model
+
+# Keep a module-level reference for backwards compatibility (used in process_document)
+embedding_model = None  # Will be set on first use via _get_embedding_model()
 
 
 # ═══════════════════════════════════════════════════════════
@@ -93,7 +102,8 @@ def process_document(document) -> int:
 
     # Separate texts and page numbers for embedding
     texts = [item['text'] for item in chunks_with_pages]
-    embeddings = embedding_model.encode(texts, show_progress_bar=True)
+    emb_model = _get_embedding_model()
+    embeddings = emb_model.encode(texts, show_progress_bar=True)
 
     chunk_objects = [
         DocumentChunk(
@@ -143,7 +153,7 @@ def retrieve_relevant_chunks(question: str, document_id: int = None, collection_
         raise ValueError("Must provide either document_id or collection_id")
 
     # Embed the question using the SAME model used during ETL
-    question_embedding = embedding_model.encode(question).tolist()
+    question_embedding = _get_embedding_model().encode(question).tolist()
 
     # Query the DB: find chunks from this document or collection, sorted by similarity
     # CosineDistance = 0 means identical, CosineDistance = 2 means opposite
@@ -211,7 +221,7 @@ def generate_answer(question: str, document_id: int = None, collection_id: int =
       1. Get or create a conversation
       2. Retrieve relevant chunks from the document
       3. Build the prompt with context + history
-      4. Send to Groq LLM
+      4. Send to Gemini LLM
       5. Save Q&A to chat history
       6. Return the answer
 
@@ -233,6 +243,7 @@ def generate_answer(question: str, document_id: int = None, collection_id: int =
     collection = None
     if document_id:
         document = Document.objects.get(id=document_id, user=user)
+        collection = document.collection
     if collection_id:
         from .models import Collection
         collection = Collection.objects.get(id=collection_id, user=user)
@@ -267,17 +278,20 @@ def generate_answer(question: str, document_id: int = None, collection_id: int =
 
     chat_history = list(previous_messages) if previous_messages else None
 
-    # ── Step 4: Build prompt and call Groq LLM ──
+    # ── Step 4: Build prompt and call Gemini LLM (via unified_llm) ──
     messages = build_prompt(question, chunks, chat_history)
+    from .unified_llm import get_unified_llm
 
-    response = groq_client.chat.completions.create(
-        model=settings.GROQ_MODEL,
-        messages=messages,
-        temperature=0.3,        # Lower = more factual, less creative
-        max_tokens=1024,
-    )
+    # Convert messages list to a plain text prompt (unified_llm accepts plain text)
+    prompt_parts = []
+    for msg in messages:
+        role = msg["role"].upper()
+        prompt_parts.append(f"[{role}]: {msg['content']}")
+    prompt = "\n\n".join(prompt_parts)
 
-    answer = response.choices[0].message.content
+    llm = get_unified_llm()
+    llm_response = llm.generate(prompt)
+    answer = llm_response['text']
 
     # ── Step 5: Save Q&A to chat history ──
     ChatMessage.objects.create(

@@ -6,12 +6,19 @@ These tasks run in the background, keeping the API responsive.
 from celery import shared_task
 from django.core.files.storage import default_storage
 import fitz
-from sentence_transformers import SentenceTransformer
 
 from .models import Document, DocumentChunk
 
-# Load the embedding model once
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+# Lazy-loaded embedding model — only initialised when a task actually runs,
+# NOT at import time (avoids blocking test startup and server restarts).
+_embedding_model = None
+
+def _get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        from sentence_transformers import SentenceTransformer
+        _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+    return _embedding_model
 
 
 @shared_task(bind=True)
@@ -60,7 +67,7 @@ def process_document_task(self, document_id: int) -> dict:
         self.update_state(state='PROCESSING', meta={'current': f'Generating embeddings for {len(chunks_text)} chunks...'})
         
         # Step 2: Generate embeddings
-        embeddings = embedding_model.encode(chunks_text, show_progress_bar=False)
+        embeddings = _get_embedding_model().encode(chunks_text, show_progress_bar=False)
         
         # Step 3: Bulk create DocumentChunk objects
         chunk_objects = [
@@ -187,7 +194,7 @@ def regenerate_embeddings_task(self, document_id: int) -> dict:
         
         # Re-embed all chunks
         chunk_texts = [chunk.text for chunk in chunks]
-        embeddings = embedding_model.encode(chunk_texts, show_progress_bar=False)
+        embeddings = _get_embedding_model().encode(chunk_texts, show_progress_bar=False)
         
         # Update embeddings in bulk
         for chunk, embedding in zip(chunks, embeddings):

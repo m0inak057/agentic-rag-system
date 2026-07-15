@@ -188,8 +188,10 @@ class DocumentUploadTest(TestCase):
     def test_document_list_returns_only_own(self):
         """A user only sees their own documents."""
         other_user = make_user(username="other", password="otherpass123")
+        from rag.models import Collection
+        other_collection = Collection.objects.create(user=other_user, name="other_test")
         doc = Document.objects.create(
-            user=other_user, title="Other's doc", file="documents/x.pdf", status="ready"
+            user=other_user, collection=other_collection, title="Other's doc", file="documents/x.pdf", status="ready"
         )
         response = self.client.get("/api/documents/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -207,6 +209,10 @@ class ChatViewTest(TestCase):
         self.user = make_user()
         token = get_jwt(self.client)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+        # Create a collection for this test user
+        from rag.models import Collection
+        self.collection = Collection.objects.create(user=self.user, name="test")
 
         # Create a ready document owned by the user
         self.doc = Document.objects.create(
@@ -301,6 +307,7 @@ class AgentStateTest(TestCase):
             "loop_count": 0,
             "document_id": 1,
             "rewrite_count": 0,
+            "web_documents": [],
         }
 
         # These should NOT raise AttributeError (the bug)
@@ -340,7 +347,8 @@ class MultiDocumentCitationsTest(TestCase):
             DocumentChunk.objects.create(
                 document=doc,
                 page_number=1,
-                text=f"This is the content of paper {i} approach {chr(64+i)}."
+                text=f"This is the content of paper {i} approach {chr(64+i)}.",
+                embedding=[0.0] * 384
             )
 
     def test_extract_and_validate_citations_node(self):
@@ -365,4 +373,4 @@ class MultiDocumentCitationsTest(TestCase):
         self.assertIn("[1]", gen)
         self.assertIn("[2]", gen)
         self.assertNotIn("[9]", gen)
-        self.assertIn("[VALIDATE] Removed invalid citations: [[9]]", result["reasoning_trace"][0])
+        self.assertIn("[VALIDATE] Removed invalid citations: [9]", result["reasoning_trace"][0])

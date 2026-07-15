@@ -136,6 +136,7 @@ class ChatView(APIView):
                         {"error": f"Document is not ready. Status: {document.status}"},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
+                collection = document.collection
             except Document.DoesNotExist:
                 return Response(
                     {"error": "Document not found or you don't have access."},
@@ -206,6 +207,7 @@ class ChatView(APIView):
             "use_web_search": False,
             "rewrite_count": 0,
             "cited_sources": [],
+            "web_documents": [],
         }
         
         # Load conversation history (last 5 messages for context)
@@ -286,30 +288,29 @@ class ConversationDetailView(generics.RetrieveAPIView):
 class UsageStatsView(APIView):
     """
     GET /api/usage-stats/
-    
+
     Returns Gemini API usage statistics and cost tracking.
     Helps monitor API usage and prevent unexpected charges.
-    Includes info about fallback to Groq if Gemini is exhausted.
     """
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get(self, request):
         from .unified_llm import get_unified_llm
-        
+
         try:
             llm = get_unified_llm()
             llm_status = llm.get_status()
             summary = llm.get_daily_summary()
-            
+
             return Response(
                 {
                     "status": llm_status,
                     "daily_summary": summary,
-                    "message": "Gemini API: Primary provider | Groq API: Fallback (free, unlimited)",
+                    "message": "Gemini API usage and cost tracking",
                 },
                 status=status.HTTP_200_OK,
             )
-        
+
         except Exception as e:
             return Response(
                 {"error": f"Failed to retrieve usage stats: {str(e)}"},
@@ -320,32 +321,30 @@ class UsageStatsView(APIView):
 class LLMProviderStatusView(APIView):
     """
     GET /api/llm-provider-status/
-    
-    Shows current LLM provider and fallback information.
+
+    Shows current LLM provider and availability status.
     Useful for debugging and understanding which API is being used.
     """
     permission_classes = [permissions.IsAuthenticated]
-    
+
     def get(self, request):
         from .unified_llm import get_unified_llm
-        
+
         try:
             llm = get_unified_llm()
             provider_status = llm.get_status()
-            
+
             return Response(
                 {
                     "primary_provider": provider_status['primary_provider'],
-                    "fallback_provider": provider_status['fallback_provider'],
                     "current_provider": provider_status['current_provider'],
                     "gemini_available": provider_status['gemini_available'],
-                    "groq_available": provider_status['groq_available'],
                     "gemini_stats": provider_status.get('gemini_stats', None),
-                    "description": "Uses Gemini API for responses. If Gemini hits rate limits or budget, automatically falls back to free Groq API.",
+                    "description": "Uses Gemini API for all LLM operations",
                 },
                 status=status.HTTP_200_OK,
             )
-        
+
         except Exception as e:
             return Response(
                 {"error": f"Failed to retrieve provider status: {str(e)}"},

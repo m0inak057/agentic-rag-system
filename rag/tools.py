@@ -8,9 +8,12 @@ from django.contrib.auth.models import User
 from pgvector.django import CosineDistance
 from rank_bm25 import BM25Okapi
 import json
+import logging
 from .models import DocumentChunk, Document
 from langchain.tools import tool
 import os
+
+logger = logging.getLogger(__name__)
 
 # Embedding model (we'll initialize this in services.py)
 embedding_model = None
@@ -118,8 +121,8 @@ def hybrid_search_tool(query: str, document_id: Optional[int] = None, collection
         vector_scores = {r['id']: r['relevance_score'] for r in vector_results}
         
         # Step 3: Keyword search (BM25) with improved preprocessing
-        from nltk.corpus import stopwords
         try:
+            from nltk.corpus import stopwords
             stop_words = set(stopwords.words('english'))
         except:
             stop_words = set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'is', 'was', 'are', 'be', 'been'])
@@ -207,13 +210,12 @@ def web_search_tool(query: str) -> List[dict]:
 @tool
 def document_analyzer_tool(text: str, task: str = "summarize") -> str:
     """
-    Analyze or summarize a document chunk using an LLM.
-    Falls back to Groq if Gemini is rate-limited.
-    
+    Analyze or summarize a document chunk using Gemini LLM.
+
     Args:
         text: The text to analyze
         task: The task to perform (e.g., "summarize", "extract_key_points")
-    
+
     Returns:
         The result of the analysis
     """
@@ -240,13 +242,12 @@ def document_analyzer_tool(text: str, task: str = "summarize") -> str:
 def grade_documents_tool(documents: List[dict], query: str) -> dict:
     """
     Grade the relevance of retrieved documents to the user's query.
-    Uses an LLM to determine if documents are relevant.
-    Falls back to Groq if Gemini is rate-limited.
-    
+    Uses Gemini LLM to determine if documents are relevant.
+
     Args:
         documents: List of document chunks with their text
         query: The user's query
-    
+
     Returns:
         A dict with 'relevant_documents', 'irrelevant_documents', and 'relevance_score'
     """
@@ -259,20 +260,22 @@ def grade_documents_tool(documents: List[dict], query: str) -> dict:
         irrelevant_docs = []
         
         for doc in documents:
-            # Create a strict grading prompt
-            prompt = f"""You are a strict grading assistant. Assess if a document directly contains information that answers the user's query.
+            # Create a balanced grading prompt that understands PDF context
+            prompt = f"""You are grading whether a PDF document chunk is relevant to a user's query.
 
-CRITICAL: Grade ONLY on direct relevance.
-- Grade YES only if the document explicitly addresses the query topic
-- Grade NO if it's only tangentially related or vague
-- Grade NO if it's background/context without direct relevance
+IMPORTANT CONTEXT:
+- These are chunks extracted from a user-uploaded PDF document
+- The user is asking about content they expect to find IN this document
+- Grade YES if the chunk contains information related to the general topic of the query
+- Grade YES if the chunk discusses concepts, terms, or techniques mentioned in the query
+- Grade NO only if the chunk is completely off-topic and cannot possibly help answer the query
 
 User Query: {query}
 
-Document:
+Document Chunk:
 {doc['text'][:500]}
 
-Can this document DIRECTLY answer or inform the user's query? Answer with ONLY "YES" or "NO", nothing else."""
+Is this chunk relevant to the user's query? Answer with ONLY "YES" or "NO", nothing else."""
 
             response = llm.generate(prompt)
             answer = response['text'].strip().upper()
