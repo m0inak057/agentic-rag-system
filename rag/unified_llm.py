@@ -49,16 +49,21 @@ class UnifiedLLMManager:
             logger.warning(f"⚠️ Gemini initialization failed: {str(e)}")
             self.gemini_llm = None
     
-    def generate(self, prompt: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.7) -> Dict[str, Any]:
         """
         Generate response exclusively using Gemini API.
+
+        Args:
+            prompt: The input prompt
+            max_tokens: Maximum output tokens (default: model's max)
+            temperature: Sampling temperature (0.0-1.0, default 0.7). Lower values enforce deterministic behavior.
         """
         if self.gemini_llm:
             try:
-                response_text = self.gemini_llm.generate(prompt, max_tokens)
+                response_text = self.gemini_llm.generate(prompt, max_tokens, temperature)
                 self.current_provider = LLMProvider.GEMINI
-                
-                logger.info(f"✅ Using Gemini API")
+
+                logger.info(f"✅ Using Gemini API (temperature={temperature})")
                 return {
                     'text': response_text,
                     'provider': LLMProvider.GEMINI,
@@ -69,7 +74,7 @@ class UnifiedLLMManager:
             except Exception as e:
                 logger.error(f"❌ Gemini error: {str(e)}")
                 raise Exception(f"Gemini API failed: {str(e)}")
-                
+
         raise Exception("Gemini API is not configured. Please set GEMINI_API_KEY.")
     
     def get_status(self) -> Dict[str, Any]:

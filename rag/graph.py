@@ -267,21 +267,21 @@ def web_search(state: AgentState) -> dict:
 def generate_answer(state: AgentState) -> dict:
     """
     Generate the final answer based on retrieved documents, web search results, and conversation history.
-    Uses Gemini API for generation.
+    Uses Gemini API for generation with strict grounding and low temperature for deterministic output.
     """
     from .unified_llm import get_unified_llm
-    
+
     state["current_step"] = "generating_answer"
     state["reasoning_trace"].append("[GENERATE] Compiling context and generating answer...")
-    
+
     try:
         llm = get_unified_llm()
-        
+
         # Compile context from retrieved documents
         docs_to_use = state.get("graded_documents") if state.get("graded_documents") else state.get("retrieved_documents", [])
         docs_to_use = docs_to_use[:5]
         num_docs = len(docs_to_use)
-        
+
         context_text = ""
         if num_docs > 0:
             context_text = "\n\n".join([
@@ -290,12 +290,12 @@ def generate_answer(state: AgentState) -> dict:
             ])
         else:
             context_text = "No relevant document chunks found."
-            
+
         # Compile context from web results
         web_docs = state.get("web_documents", [])
         web_docs = web_docs[:5]
         num_web = len(web_docs)
-        
+
         web_context_text = ""
         if num_web > 0:
             web_context_text = "\n\n".join([
@@ -304,50 +304,74 @@ def generate_answer(state: AgentState) -> dict:
             ])
         else:
             web_context_text = "No web search results available."
-        
+
         # Build conversation history string
         history_text = ""
         if state.get("conversation_history"):
-            history_text = "\nConversation History:\n"
+            history_text = "\nRecent Conversation History:\n"
             for msg in state["conversation_history"][-3:]:  # Last 3 messages for context
                 history_text += f"- {msg['role']}: {msg['content'][:200]}\n"
-        
-        # Construct the prompt with instructions for combined response
-        user_prompt = f"""You are a helpful AI assistant that answers questions based on provided documents and web context.
 
-CRITICAL ANSWER STRUCTURE:
-1. **Document Section**: First, answer the question based ONLY on the provided Context Documents (citing them as [1], [2], etc.). If a document/collection is provided but no relevant information is found in the documents (or no matching chunks are found), state clearly in this section: "No information regarding this query was found in the provided documents."
-2. **Additional Web Info**: Then, at the very end of your response, ALWAYS create a dedicated section titled:
-   `### Additional Web Information`
-   Under this section, summarize the relevant information found from the Web Context (citing them as [{num_docs + 1}], [{num_docs + 2}], etc., depending on the source numbers). If there are no web results, you can omit this section or state that no web info was found.
+        # STRICT GROUNDING SYSTEM PROMPT
+        system_prompt = """You are a document-grounded AI assistant. Your responses MUST be strictly derived from the provided context sources.
 
-CITATION RULES:
-- Use standard brackets like [1], [2], etc. for citations.
-- Cite ONLY when directly referencing facts from that source.
-- DO NOT cite source titles, only use bracketed numbers.
+MANDATORY GROUNDING RULES:
+1. **Answer ONLY from Provided Context**: Every fact, claim, or statement in your answer must be directly traceable to the document or web sources provided. DO NOT use parametric memory or external knowledge.
+2. **If No Answer Exists**: If the question cannot be answered from the provided documents AND web results, you MUST explicitly state: "I cannot answer this based on the provided documents and sources."
+3. **NO Hallucinations**: Never invent, assume, or speculate about information not explicitly contained in the sources. If uncertain, say so.
+
+CONTEXT STRUCTURE AND PRIORITY:
+- **NATIVE DOCUMENTS (Sources 1 to N)**: These are your primary sources. Answer using documents first.
+- **WEB RESULTS (Sources N+1 to M)**: Supplementary sources only. Use web results only after exhausting document context, and explicitly flag when using them with "According to web search results:" or similar.
+
+CITATION REQUIREMENTS:
+- Cite using [N] format (e.g., [1], [2]) immediately after any fact or claim.
+- Citations MUST match actual source numbers in the context.
+- Multiple citations for one claim: [1][2] or [1], [3], [5].
+- Invalid citations (e.g., [99]) will cause response degradation.
+
+RESPONSE STRUCTURE:
+1. **Primary Answer**: Derived exclusively from document sources (Sources 1 to N). If no document answers the query, state this explicitly.
+2. **Web Supplement** (if applicable): If web results provide additional useful information, create a subsection titled "### Additional Web Information" citing [N+1], [N+2], etc.
+3. **Transparency**: Always be explicit about what is unknown or missing from the sources."""
+
+        # Construct the prompt with strict grounding constraints
+        user_prompt = f"""{system_prompt}
+
+===== PROVIDED CONTEXT =====
+
+NATIVE DOCUMENT SOURCES (Priority 1 - Answer from these first):
+Sources 1 to {num_docs}:
+{context_text}
+
+WEB SEARCH SOURCES (Priority 2 - Use only to supplement documents):
+Sources {num_docs + 1} to {num_docs + num_web}:
+{web_context_text}
 
 {history_text}
 
-Context Documents (Sources 1 to {num_docs}):
-{context_text}
+===== USER QUESTION =====
+{state['question']}
 
-Web Context (Sources {num_docs + 1} to {num_docs + num_web}):
-{web_context_text}
+===== ANSWER INSTRUCTIONS =====
+- Derive your answer strictly from the provided sources above.
+- Every statement must be traceable to a source via [N] citation.
+- If you cannot answer from the provided context, explicitly state: "I cannot answer this based on the provided documents and sources."
+- Do NOT use general knowledge or assumptions.
+- Prioritize native document sources; use web results only as supplementary information.
+- Ensure all citations are valid (exist in the source list above)."""
 
-User Question: {state['question']}
-
-Please generate your response adhering strictly to the required structure and citation formats."""
-        
-        response = llm.generate(user_prompt)
+        # Pass temperature=0.1 to enforce deterministic, grounded behavior (no hallucination)
+        response = llm.generate(user_prompt, temperature=0.1)
         state["generation"] = response['text']
         provider = response['provider'].value
 
-        state["reasoning_trace"].append(f"[GENERATE] Answer generated via {provider}")
-        
+        state["reasoning_trace"].append(f"[GENERATE] Answer generated via {provider} (strict grounding, temp=0.1)")
+
     except Exception as e:
         state["generation"] = f"Error generating answer: {str(e)}"
         state["reasoning_trace"].append(f"[GENERATE] Error: {str(e)}")
-        
+
     return {"generation": state.get("generation", ""), "current_step": state["current_step"], "reasoning_trace": state["reasoning_trace"]}
 
 

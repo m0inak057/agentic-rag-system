@@ -107,9 +107,14 @@ class GeminiLLM:
         # Initialize Gemini client
         self.client = genai.Client(api_key=self.api_key)
     
-    def generate(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+    def generate(self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.7) -> str:
         """
         Generate text with Gemini.
+
+        Args:
+            prompt: The input prompt
+            max_tokens: Maximum output tokens (default: model's max)
+            temperature: Sampling temperature (0.0-1.0, default 0.7). Lower values (e.g., 0.1) enforce deterministic, grounded behavior.
         """
         try:
             # Use safe default max tokens
@@ -118,12 +123,15 @@ class GeminiLLM:
                 self.MODELS[self.model]['max_tokens']
             )
 
+            # Clamp temperature to valid range
+            temperature = max(0.0, min(1.0, temperature))
+
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
                 config={
                     'max_output_tokens': output_tokens,
-                    'temperature': 0.7,
+                    'temperature': temperature,
                     'top_p': 0.95,
                     'top_k': 40,
                 }
