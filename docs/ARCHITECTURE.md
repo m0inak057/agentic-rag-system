@@ -316,7 +316,7 @@ build_combined_table(configs)
 ## 5. What stays the same (do not touch)
 
 - JWT auth flow.
-- `unified_llm.py` Gemini → Groq fallback logic.
+- `unified_llm.py` Gemini-only architecture (Groq removed).
 - Celery worker setup.
 - pgvector cosine distance ordering.
 - SSE event protocol.
@@ -324,3 +324,131 @@ build_combined_table(configs)
 - Web search (Tavily) tool.
 
 The v2 changes are scoped tightly. Any temptation to refactor unrelated code should be deferred to v3.
+
+---
+
+## 6. Production Deployment
+
+### 6.1 Environment Variables (Required)
+
+Before deploying, set these environment variables:
+
+```bash
+# Security
+export ENVIRONMENT=production
+export SECRET_KEY=<generate-strong-uuid>
+export DEBUG=False
+
+# Database (PostgreSQL with pgvector)
+export DB_NAME=rag_db_prod
+export DB_USER=<prod-username>
+export DB_PASSWORD=<prod-password>
+export DB_HOST=<prod-hostname>
+export DB_PORT=5432
+
+# API Access
+export ALLOWED_HOSTS=yourdomain.com,api.yourdomain.com
+
+# LLM (Gemini)
+export GEMINI_API_KEY=<your-gemini-api-key>
+
+# Web Search (Optional)
+export TAVILY_API_KEY=<your-tavily-api-key>
+
+# Task Queue (Celery + Redis)
+export CELERY_BROKER_URL=redis://<redis-host>:6379/0
+export CELERY_RESULT_BACKEND=redis://<redis-host>:6379/1
+export REDIS_CACHE_URL=redis://<redis-host>:6379/2
+
+# CORS (if frontend on different domain)
+export CORS_ALLOWED_ORIGINS=https://yourdomain.com
+```
+
+### 6.2 Pre-deployment Checklist
+
+```bash
+# 1. Database
+python manage.py migrate                    # Apply all migrations
+python manage.py collectstatic --noinput   # Collect static files
+
+# 2. Verification
+python manage.py test rag --verbosity=2    # Run test suite (19 tests must pass)
+curl https://yourdomain.com/api/           # Health check
+
+# 3. Verify critical endpoints
+curl -H "Authorization: Bearer <token>" \
+     https://yourdomain.com/api/llm-provider-status/
+
+# 4. Load testing (optional)
+# Test document upload, chat streaming, citation validation
+```
+
+### 6.3 Performance Notes
+
+**Bottleneck: Faithfulness (22% baseline)**
+- Use temperature=0.1 in generate_answer for deterministic output
+- Enforce strict grounding prompts (answer only from provided sources)
+- Validate citations post-hoc to remove hallucinated markers
+- This is the limiting factor, not retrieval precision
+
+**Retrieval Strategy: Vector-Only**
+- Phase 6 ablation showed vector-only outperforms hybrid by 29% on Recall@10
+- BM25 adds noise; grading is neutral; query rewriting hurts
+- Current deployment uses vector-only search
+
+**Scaling for Production**
+- Celery workers: 4-8 workers depending on load
+- Redis: Use cluster mode for HA
+- PostgreSQL: Tune connection pool (100-200 connections)
+- pgvector: Create index on embedding column for HNSW acceleration
+  ```sql
+  CREATE INDEX idx_embedding ON rag_documentchunk 
+  USING hnsw (embedding vector_cosine_ops) WITH (m=16, ef_construction=200);
+  ```
+
+### 6.4 Monitoring
+
+Enable structured JSON logging for production:
+
+```python
+# Add to settings.py for production
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'json': {
+            '()': 'pythonjsonlogger.jsonlogger.JsonFormatter',
+            'format': '%(asctime)s %(name)s %(levelname)s %(message)s'
+        }
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'json'
+        }
+    },
+    'loggers': {
+        'rag': {
+            'handlers': ['console'],
+            'level': 'INFO'
+        }
+    }
+}
+```
+
+Key metrics to monitor:
+- Document processing latency (should be < 30s for typical PDFs)
+- Chat response latency (target < 5s for streaming start)
+- Gemini API rate limits and costs
+- PostgreSQL query performance on collection-scoped retrieval
+- Redis key eviction and memory usage
+
+### 6.5 Troubleshooting
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Documents stuck in "processing" | Celery worker down | Check Redis connection, restart workers |
+| High faithfulness errors | LLM hallucinating | Lower temperature to 0.1, tighten prompt |
+| Slow retrieval on large collections | Missing pgvector HNSW index | Create index (see 6.3) |
+| CORS errors from frontend | CORS_ALLOWED_ORIGINS not set | Add frontend domain to env var |
+| 404 on root endpoint | ALLOWED_HOSTS mismatch | Verify request Host header matches ALLOWED_HOSTS |
