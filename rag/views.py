@@ -1,4 +1,5 @@
 import logging
+import os
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -8,6 +9,7 @@ from django.db.models import Count
 import json
 
 logger = logging.getLogger(__name__)
+IS_PRODUCTION = os.getenv('ENVIRONMENT') == 'production'
 
 from .models import Document, ChatConversation, ChatMessage, Collection
 from .serializers import (
@@ -64,22 +66,30 @@ class DocumentUploadView(generics.CreateAPIView):
         document = serializer.instance
 
         try:
-            task = process_document_task.delay(document.id)
-            
+            # In development: run task synchronously (CELERY_TASK_ALWAYS_EAGER=True)
+            # In production: queue task to Redis/Celery broker
+            if IS_PRODUCTION:
+                task = process_document_task.delay(document.id)
+                task_id = task.id
+            else:
+                # Development: execute synchronously
+                task = process_document_task.apply(args=[document.id])
+                task_id = task.id if hasattr(task, 'id') else 'sync'
+
             return Response(
                 {
-                    "message": "Document uploaded! Processing started in background.",
+                    "message": "Document uploaded! Processing started.",
                     "document": serializer.data,
-                    "task_id": task.id,
+                    "task_id": task_id,
                     "status": "processing",
                 },
                 status=status.HTTP_202_ACCEPTED,
             )
         except Exception as e:
-            logger.error(f"Failed to queue document processing for document {document.id}: {e}", exc_info=True)
-            document.delete() # Clean up if task queuing fails
+            logger.error(f"Failed to process document {document.id}: {e}", exc_info=True)
+            document.delete()
             return Response(
-                {"error": "Failed to queue document processing. Please try again later."},
+                {"error": "Failed to process document. Please try again."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
