@@ -105,13 +105,13 @@ export default function DocumentUpload({ onSuccess }) {
 
       setSuccess(true)
       setFile(null)
-      setProgress(0)
+      setProgress(100) // Show 100% completion
 
-      // Clear success message after 3 seconds
+      // Clear success message after 5 seconds so user has time to see it
       setTimeout(() => {
         setSuccess(false)
         setProgress(0)
-      }, 3000)
+      }, 5000)
 
       // Trigger refresh of document list
       onSuccess()
@@ -213,20 +213,29 @@ export default function DocumentUpload({ onSuccess }) {
         {success && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <p className="text-green-700 font-medium">✓ Document uploaded successfully!</p>
-            <p className="text-green-600 text-sm">Processing will complete in the background</p>
+            <p className="text-green-600 text-sm">
+              <strong>{file?.name || 'Your document'}</strong> is being processed.
+            </p>
+            <p className="text-green-600 text-sm">
+              Check "My Documents" to see the status. It will change to <strong>Ready</strong> when processing completes.
+            </p>
           </div>
         )}
 
         {/* Progress Bar */}
-        {uploading && progress > 0 && (
+        {progress > 0 && (
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <p className="text-sm font-medium text-gray-700">Uploading...</p>
+              <p className="text-sm font-medium text-gray-700">
+                {uploading ? 'Uploading...' : 'Upload complete!'}
+              </p>
               <p className="text-sm text-gray-600">{progress}%</p>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  progress === 100 ? 'bg-green-600' : 'bg-blue-600'
+                }`}
                 style={{ width: `${progress}%` }}
               />
             </div>

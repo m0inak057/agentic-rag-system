@@ -14,6 +14,20 @@ export default function DocumentList({ onSelectDocument }) {
 
   useEffect(() => {
     fetchDocuments()
+
+    // Auto-refresh every 2 seconds while any document is processing
+    const pollInterval = setInterval(() => {
+      setDocuments(prev => {
+        // Check if any document is still processing/pending
+        const hasProcessing = prev.some(d => d.status === 'processing' || d.status === 'pending')
+        if (hasProcessing) {
+          fetchDocuments()
+        }
+        return prev
+      })
+    }, 2000) // Poll every 2 seconds
+
+    return () => clearInterval(pollInterval)
   }, [])
 
   const fetchDocuments = async () => {
