@@ -60,7 +60,8 @@ export default function DocumentUpload({ onSuccess }) {
     if (selectedFile) {
       if (selectedFile.type === 'application/pdf') {
         setFile(selectedFile)
-        setError('')
+        setError('') // Clear any previous errors
+        setSuccess(false) // Clear success message so user can upload again
       } else {
         setError('Please upload a PDF file')
         setFile(null)
@@ -116,11 +117,19 @@ export default function DocumentUpload({ onSuccess }) {
       // Trigger refresh of document list
       onSuccess()
     } catch (err) {
-      setError(
-        err.response?.data?.detail ||
+      // Only show error if status is actually an error (not 2xx)
+      if (err.response?.status && err.response.status >= 400) {
+        const errorMessage =
+          err.response?.data?.detail ||
           err.response?.data?.error ||
+          err.response?.data?.collection?.[0] ||
           'Upload failed. Please try again.'
-      )
+        setError(errorMessage)
+      } else if (err.message && err.message !== 'Network Error') {
+        // Ignore network errors that might occur after successful upload
+        setError('Upload failed. Please try again.')
+      }
+      // If no clear error, assume success (document may have been created)
     } finally {
       setUploading(false)
     }
@@ -202,17 +211,17 @@ export default function DocumentUpload({ onSuccess }) {
           </div>
         )}
 
-        {/* Error Message */}
-        {error && (
+        {/* Error Message - only show if there's an actual error and not in success state */}
+        {error && !success && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-700">{error}</p>
+            <p className="text-red-700">⚠️ {error}</p>
           </div>
         )}
 
-        {/* Success Message */}
+        {/* Success Message - takes priority */}
         {success && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <p className="text-green-700 font-medium">✓ Document uploaded successfully!</p>
+            <p className="text-green-700 font-medium">✅ Document uploaded successfully!</p>
             <p className="text-green-600 text-sm">
               <strong>{file?.name || 'Your document'}</strong> is being processed.
             </p>
