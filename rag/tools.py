@@ -6,7 +6,6 @@ These tools are the "skills" the agent can use to answer questions.
 from typing import Optional, List
 from django.contrib.auth.models import User
 from pgvector.django import CosineDistance
-from rank_bm25 import BM25Okapi
 import json
 import logging
 from .models import DocumentChunk, Document
@@ -84,90 +83,6 @@ def vector_search_tool(query: str, document_id: Optional[int] = None, collection
         return _vector_search_impl(query, document_id=document_id, collection_id=collection_id, top_k=top_k)
     except Exception as e:
         raise ValueError(f"Vector search failed: {str(e)}")
-
-
-@tool
-def hybrid_search_tool(query: str, document_id: Optional[int] = None, collection_id: Optional[int] = None, top_k: int = 5) -> List[dict]:
-    """
-    Perform hybrid search combining semantic (vector) and keyword (BM25) search.
-
-    Args:
-        query: The user's question or search query
-        document_id: The ID of the document to search within
-        collection_id: The ID of the collection to search within
-        top_k: Number of top results to return (default: 5)
-
-    Returns:
-        List of relevant chunks ranked by combined score
-    """
-    try:
-        if not document_id and not collection_id:
-            raise ValueError("Must provide either document_id or collection_id")
-
-        # Step 1: Get all chunks from the document/collection
-        queryset = DocumentChunk.objects.select_related('document')
-        if document_id:
-            queryset = queryset.filter(document_id=document_id)
-        if collection_id:
-            queryset = queryset.filter(document__collection_id=collection_id)
-            
-        all_chunks = list(queryset)
-
-        if not all_chunks:
-            return []
-
-        # Step 2: Semantic search — call plain helper directly (not the @tool wrapper)
-        vector_results = _vector_search_impl(query, document_id=document_id, collection_id=collection_id, top_k=len(all_chunks))
-        vector_scores = {r['id']: r['relevance_score'] for r in vector_results}
-        
-        # Step 3: Keyword search (BM25) with improved preprocessing
-        try:
-            from nltk.corpus import stopwords
-            stop_words = set(stopwords.words('english'))
-        except:
-            stop_words = set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'is', 'was', 'are', 'be', 'been'])
-
-        # Preprocess texts and query
-        def preprocess(text):
-            words = text.lower().split()
-            return [w for w in words if w.isalnum() and w not in stop_words and len(w) > 2]
-
-        texts = [chunk.text for chunk in all_chunks]
-        preprocessed_texts = [preprocess(text) for text in texts]
-        preprocessed_query = preprocess(query)
-
-        bm25 = BM25Okapi(preprocessed_texts)
-        bm25_scores = bm25.get_scores(preprocessed_query)
-
-        # Normalize BM25 scores to 0-1 range
-        max_bm25 = max(bm25_scores) if max(bm25_scores) > 0 else 1
-        bm25_scores_normalized = [score / max_bm25 for score in bm25_scores]
-
-        # Step 4: Combine scores (70% vector, 30% BM25 - vector search is more semantically accurate)
-        combined_results = []
-        for idx, chunk in enumerate(all_chunks):
-            vector_score = vector_scores.get(chunk.id, 0)
-            bm25_score = bm25_scores_normalized[idx]
-            combined_score = 0.7 * vector_score + 0.3 * bm25_score
-            
-            combined_results.append({
-                'id': chunk.id,
-                'document_id': chunk.document.id,
-                'document_title': chunk.document.title,
-                'page_number': chunk.page_number,
-                'text': chunk.text,
-                'vector_score': vector_score,
-                'bm25_score': bm25_score,
-                'combined_score': combined_score,
-            })
-        
-        # Sort and return top_k
-        combined_results.sort(key=lambda x: x['combined_score'], reverse=True)
-        return combined_results[:top_k]
-
-    except Exception as e:
-        logger.error(f"Hybrid search failed: {str(e)}")
-        return []
 
 
 @tool

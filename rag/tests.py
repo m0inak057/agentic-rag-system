@@ -269,17 +269,23 @@ class ChatViewTest(TestCase):
 # 5.  tools.py — hybrid search logic (unit level)
 # ---------------------------------------------------------------------------
 
-class HybridSearchTest(TestCase):
+class VectorSearchTest(TestCase):
     """
-    Tests that hybrid_search_tool returns empty list when there are no chunks,
-    without needing a real DB or embedding model.
+    Tests that vector_search_tool returns empty list when there are no chunks.
+    (Phase 6 ablation: vector-only search outperforms hybrid search by 29% on recall)
     """
 
-    def test_empty_document_returns_empty_list(self):
-        from rag.tools import hybrid_search_tool
+    @patch('rag.tools.embedding_model')
+    def test_empty_document_returns_empty_list(self, mock_embedding_model):
+        import numpy as np
+        from rag.tools import vector_search_tool, set_embedding_model
+
+        # Mock the embedding model to return proper numpy array
+        mock_embedding_model.encode.return_value = np.array([0.0] * 384)
+        set_embedding_model(mock_embedding_model)
 
         # No chunks exist for document_id=9999
-        result = hybrid_search_tool.invoke(
+        result = vector_search_tool.invoke(
             {"query": "test query", "document_id": 9999, "top_k": 5}
         )
         self.assertEqual(result, [])

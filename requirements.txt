@@ -30,10 +30,10 @@ PyMuPDF==1.23.8
 
 # Search & Ranking
 rank-bm25==0.2.2
-sentence-transformers==2.2.2
+sentence-transformers>=3.0.0
 
-# Hugging Face (compatible with sentence-transformers 2.2.2)
-huggingface-hub==0.23.4
+# Hugging Face
+huggingface-hub>=0.23.0
 
 # Web Search
 tavily-python>=0.2.0

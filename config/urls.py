@@ -20,6 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,   # POST /api/auth/token/       -> Login (get tokens)
     TokenRefreshView,      # POST /api/auth/token/refresh/ -> Refresh access token
@@ -28,6 +29,8 @@ from rag.views import RegisterView
 
 class RootView(APIView):
     """Welcome endpoint with API links"""
+    permission_classes = [AllowAny]
+
     def get(self, request):
         return Response({
             'message': '🎯 Agentic RAG API is running!',

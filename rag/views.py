@@ -1,3 +1,4 @@
+import logging
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -5,6 +6,8 @@ from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.db.models import Count
 import json
+
+logger = logging.getLogger(__name__)
 
 from .models import Document, ChatConversation, ChatMessage, Collection
 from .serializers import (
@@ -73,9 +76,10 @@ class DocumentUploadView(generics.CreateAPIView):
                 status=status.HTTP_202_ACCEPTED,
             )
         except Exception as e:
+            logger.error(f"Failed to queue document processing for document {document.id}: {e}", exc_info=True)
             document.delete() # Clean up if task queuing fails
             return Response(
-                {"error": f"Failed to queue document processing: {str(e)}"},
+                {"error": "Failed to queue document processing. Please try again later."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -253,8 +257,9 @@ class ChatView(APIView):
             yield f"data: {json.dumps({'type': 'complete', 'message_id': ai_message.id, 'sources': ai_message.sources})}\n\n"
 
         except Exception as e:
-            # Yield error
-            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            # Log full details server-side; don't leak internals to the client
+            logger.error(f"Agent pipeline failed for conversation {conversation.id}: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'content': 'Something went wrong while generating the answer. Please try again.'})}\n\n"
 
 
 class ConversationListView(generics.ListAPIView):
@@ -312,8 +317,9 @@ class UsageStatsView(APIView):
             )
 
         except Exception as e:
+            logger.error(f"Failed to retrieve usage stats: {e}", exc_info=True)
             return Response(
-                {"error": f"Failed to retrieve usage stats: {str(e)}"},
+                {"error": "Failed to retrieve usage stats."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -346,8 +352,9 @@ class LLMProviderStatusView(APIView):
             )
 
         except Exception as e:
+            logger.error(f"Failed to retrieve provider status: {e}", exc_info=True)
             return Response(
-                {"error": f"Failed to retrieve provider status: {str(e)}"},
+                {"error": "Failed to retrieve provider status."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

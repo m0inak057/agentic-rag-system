@@ -11,7 +11,6 @@ import os
 
 from .tools import (
     vector_search_tool,
-    hybrid_search_tool,
     web_search_tool,
     grade_documents_tool,
 )
@@ -102,52 +101,21 @@ Return ONLY the rewritten question, nothing else."""
 
 def retrieve_documents(state: AgentState) -> dict:
     """
-    Retrieve relevant document chunks using configured search strategy.
-    Supports hybrid search (semantic+keyword) or vector-only based on config.
+    Retrieve relevant document chunks using vector search.
+    Ablation study (Phase 6) confirmed vector-only search outperforms hybrid search by 29% on Recall.
     """
     state["current_step"] = "retrieving_documents"
-    config = state.get('config', {'use_hybrid_search': True})
-    use_hybrid = config.get('use_hybrid_search', True)
-
-    if use_hybrid:
-        state["reasoning_trace"].append("[RETRIEVE] Starting hybrid search with query expansion...")
-    else:
-        state["reasoning_trace"].append("[RETRIEVE] Starting vector-only search...")
+    state["reasoning_trace"].append("[RETRIEVE] Starting vector search...")
 
     try:
-        from .unified_llm import get_unified_llm
-
-        # Generate expanded queries only for hybrid search (better ROI)
+        # Search with vector similarity only
         all_queries = [state["question"]]
-        if use_hybrid:
-            llm = get_unified_llm()
-            expansion_prompt = f"""Generate 2 alternative phrasings of this question that might retrieve different but relevant documents.
-Original: {state['question']}
-
-Return ONLY the 2 alternatives, one per line, no numbering or extra text."""
-
-            try:
-                expansion_response = llm.generate(expansion_prompt)
-                expanded_queries = expansion_response['text'].strip().split('\n')[:2]
-                all_queries.extend(expanded_queries)
-            except:
-                pass
-
-        # Search with configured strategy
         all_results = {}
 
         for query_variant in all_queries:
             try:
-                if use_hybrid:
-                    results = hybrid_search_tool.invoke({
-                        "query": query_variant,
-                        "document_id": state.get("document_id"),
-                        "collection_id": state.get("collection_id"),
-                        "top_k": 10
-                    })
-                else:
-                    results = vector_search_tool.invoke({
-                        "query": query_variant,
+                results = vector_search_tool.invoke({
+                    "query": query_variant,
                         "document_id": state.get("document_id"),
                         "collection_id": state.get("collection_id"),
                         "top_k": 10
@@ -160,35 +128,23 @@ Return ONLY the 2 alternatives, one per line, no numbering or extra text."""
                         all_results[chunk_id] = result
                     else:
                         # Average scores from multiple queries
-                        score_key = 'combined_score' if use_hybrid else 'relevance_score'
-                        all_results[chunk_id][score_key] = (
-                            all_results[chunk_id].get(score_key, 0) + result.get(score_key, 0)
+                        all_results[chunk_id]['relevance_score'] = (
+                            all_results[chunk_id].get('relevance_score', 0) + result.get('relevance_score', 0)
                         ) / 2
             except Exception as e:
                 state["reasoning_trace"].append(f"[RETRIEVE] Search error for query '{query_variant}': {str(e)}")
 
-        # Re-rank combined results
-        score_key = 'combined_score' if use_hybrid else 'relevance_score'
+        # Re-rank combined results (vector-only: Phase 6 ablation showed this outperforms hybrid by 29%)
         ranked_results = sorted(
             all_results.values(),
-            key=lambda x: x.get(score_key, 0),
+            key=lambda x: x.get('relevance_score', 0),
             reverse=True
         )[:20]
 
-        # Apply cross-encoder re-ranking for hybrid search only
-        if use_hybrid:
-            from .tools import rerank_with_cross_encoder
-            state["retrieved_documents"] = rerank_with_cross_encoder(
-                state["question"],
-                ranked_results,
-                top_k=5
-            )
-        else:
-            state["retrieved_documents"] = ranked_results[:5]
+        state["retrieved_documents"] = ranked_results[:5]
 
         state["reasoning_trace"].append(
-            f"[RETRIEVE] Found {len(state['retrieved_documents'])} chunks "
-            f"({'hybrid' if use_hybrid else 'vector-only'})"
+            f"[RETRIEVE] Found {len(state['retrieved_documents'])} chunks (vector-only)"
         )
 
         if len(state["retrieved_documents"]) == 0:
@@ -483,23 +439,23 @@ def create_rag_graph(config: Optional[Dict[str, bool]] = None):
 
     Args:
         config: Configuration dict controlling which components are active:
-            - use_hybrid_search: Use hybrid (semantic+keyword) vs vector-only (default: True)
+            - use_web_search: Enable web search as supplementary source (default: True)
             - use_grading: Grade documents for relevance (default: True)
             - use_rewriting: Rewrite vague queries (default: True)
 
     Graph flow:
     1. route_query: Decides between document search, web search, or direct generation
-    2. retrieve_documents: Performs search (hybrid or vector-only based on config)
+    2. retrieve_documents: Performs vector-only search (Phase 6 ablation: vector-only outperforms hybrid by 29%)
     3. grade_documents: Evaluates relevance of retrieved docs (if enabled)
     4. rewrite_query: Refines the query if needed (if enabled)
-    5. web_search: Fallback to web search if local docs aren't good
+    5. web_search: Supplementary web search (if enabled)
     6. generate_answer: Creates the final response using retrieved context
     """
 
     # Default config: all features enabled
     if config is None:
         config = {
-            'use_hybrid_search': True,
+            'use_web_search': True,
             'use_grading': True,
             'use_rewriting': True,
         }
@@ -533,24 +489,22 @@ def create_rag_graph(config: Optional[Dict[str, bool]] = None):
 
     # From retrieve_documents
     def route_retrieve(state):
-        if state.get("use_web_search", False):
+        if state.get("use_web_search", False) and config.get('use_web_search', True):
             return "web_search"
         if config['use_grading']:
             return "grade_documents"
-        if state.get("document_id") or state.get("collection_id"):
+        if state.get("use_web_search", False) and config.get('use_web_search', True):
             return "web_search"
         return "generate_answer"
 
     workflow.add_conditional_edges("retrieve_documents", route_retrieve)
 
-    # From grade_documents: if we have relevant docs, generate/web_search; 
-    # if no relevant docs but retrieval returned something, still proceed with what we have
-    # (avoids getting stuck in rewrite loops that end up at web search)
+    # From grade_documents
     def route_grade(state):
         has_relevant = len(state.get("graded_documents", [])) > 0
         has_retrieved = len(state.get("retrieved_documents", [])) > 0
         if has_relevant or has_retrieved or not config['use_rewriting']:
-            if state.get("document_id") or state.get("collection_id"):
+            if state.get("use_web_search", False) and config.get('use_web_search', True):
                 return "web_search"
             return "generate_answer"
         return "rewrite_query"
@@ -560,14 +514,14 @@ def create_rag_graph(config: Optional[Dict[str, bool]] = None):
     # From rewrite_query
     def route_rewrite(state):
         if state.get("rewrite_count", 0) > 2:
-            if state.get("document_id") or state.get("collection_id"):
+            if state.get("use_web_search", False) and config.get('use_web_search', True):
                 return "web_search"
             return "generate_answer"
         return "retrieve_documents"
 
     workflow.add_conditional_edges("rewrite_query", route_rewrite)
 
-    # From web_search
+    # From web_search (always added, routing logic skips it if disabled)
     workflow.add_edge("web_search", "generate_answer")
 
     # From generate_answer to validate_citations

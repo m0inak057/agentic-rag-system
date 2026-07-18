@@ -25,12 +25,21 @@ load_dotenv(BASE_DIR / '.env')
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-q_-qatm+5tgh5wx=-=5zx3^=w)d+z6$0sv^izzcjef--k7dt3n'
+# Load from environment variable; use a fallback only for local development
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    if os.getenv('ENVIRONMENT', 'development') == 'production':
+        raise ValueError("SECRET_KEY must be set via environment variable in production")
+    # Fallback for development only
+    SECRET_KEY = 'django-insecure-dev-only-q_-qatm+5tgh5wx=-=5zx3^=w)d+z6$0sv^izzcjef--k7dt3n'
+    import warnings
+    warnings.warn("Using insecure development SECRET_KEY. Set SECRET_KEY environment variable for production.", RuntimeWarning)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Parse DEBUG from environment; default to False for safety
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -89,11 +98,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'rag_db',
-        'USER': 'postgres',
-        'PASSWORD': 'password',
-        'HOST': 'localhost',
-        'PORT': '5433',
+        'NAME': os.getenv('DB_NAME', 'rag_db'),
+        'USER': os.getenv('DB_USER', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5433'),
     }
 }
 
@@ -142,15 +151,31 @@ MEDIA_ROOT = BASE_DIR / 'media'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
+    ),
+    # Safety net: any view that forgets to set permission_classes defaults to
+    # requiring authentication rather than being open to the world.
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/minute',
+        'user': '60/minute',
+    },
 }
 
 # CORS configuration
-CORS_ALLOW_ALL_ORIGINS = True # For development only
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:5173", # Vite default
-#     "http://localhost:3000", # React default
-# ]
+# Default: disable CORS_ALLOW_ALL_ORIGINS in production; enable only if explicitly set
+CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False').lower() in ('true', '1', 'yes')
+
+# Alternatively, specify trusted origins via environment variable
+CORS_ALLOWED_ORIGINS = os.getenv(
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000'
+).split(',') if os.getenv('CORS_ALLOWED_ORIGINS') else []
 
 # JWT Config (optional customization)
 from datetime import timedelta
@@ -165,8 +190,8 @@ SIMPLE_JWT = {
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ─── Celery Configuration ───
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -181,7 +206,7 @@ GEMINI_MODEL = 'gemini-2.5-flash'  # Most cost-effective model
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'LOCATION': os.getenv('REDIS_CACHE_URL', 'redis://127.0.0.1:6379/1'),
         'TIMEOUT': 86400,  # 24 hours
     }
 }

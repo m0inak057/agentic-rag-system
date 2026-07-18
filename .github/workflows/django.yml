@@ -1,0 +1,87 @@
+name: Django CI
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: rag_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Create .env file for testing
+      run: |
+        cat > .env << EOF
+        SECRET_KEY=${{ secrets.SECRET_KEY || 'test-secret-key-for-ci' }}
+        DEBUG=False
+        ALLOWED_HOSTS=localhost,127.0.0.1
+        CORS_ALLOW_ALL_ORIGINS=False
+        DATABASE_URL=postgresql://postgres:postgres@localhost:5432/rag_test
+        GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY || '' }}
+        TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY || '' }}
+        REDIS_URL=redis://localhost:6379/0
+        ENVIRONMENT=ci
+        EOF
+
+    - name: Run migrations
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rag_test
+        SECRET_KEY: test-secret-key
+        DEBUG: 'False'
+      run: |
+        python manage.py migrate
+
+    - name: Run tests
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rag_test
+        SECRET_KEY: test-secret-key
+        DEBUG: 'False'
+      run: |
+        python manage.py test rag
+
+    - name: Upload coverage reports
+      if: always()
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.xml
+        flags: unittests
+        fail_ci_if_error: false
