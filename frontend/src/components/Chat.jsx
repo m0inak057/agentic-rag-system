@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
 import api from '../services/api'
+import '../App.css'
 
 export default function Chat({ documentId, documentTitle, collectionId, collectionTitle }) {
   const [messages, setMessages] = useState([])
@@ -48,7 +49,6 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
 
     try {
       const token = localStorage.getItem('token')
-      
       const requestBody = { question: userMessage }
       if (documentId) requestBody.document_id = documentId
       if (collectionId) requestBody.collection_id = collectionId
@@ -128,15 +128,15 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
 
   if (!documentId && !collectionId) {
     return (
-      <div className="flex flex-col h-[500px] items-center justify-center text-center p-8 text-gray-500">
-        <p className="text-lg mb-2">No context selected</p>
-        <p className="text-sm">Select a Document or Collection to start chatting.</p>
+      <div className="flex flex-col h-[500px] items-center justify-center text-center p-8">
+        <div className="animate-bounce mb-4 text-5xl">🎯</div>
+        <p className="text-xl font-bold gradient-text mb-2">Select a Knowledge Source</p>
+        <p className="text-emerald-100">Pick a Document or Collection to begin your intelligent conversation.</p>
       </div>
     )
   }
 
   const renderMessageContent = (text, sources) => {
-    // splits based on [number] capturing group
     const parts = text.split(/(\[\d+\])/g)
     return parts.map((part, i) => {
       const match = part.match(/^\[(\d+)\]$/)
@@ -148,7 +148,8 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
             <button
               key={i}
               onClick={() => setActiveSource(sourceObj)}
-              className="inline-flex items-center justify-center mx-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 hover:bg-blue-200 text-xs font-semibold rounded cursor-pointer transition-colors"
+              className="inline-flex items-center justify-center mx-1 px-2 py-1 bg-emerald-500 text-white hover:bg-emerald-500 text-xs font-bold rounded-lg cursor-pointer transition-all duration-300 hover:scale-110"
+              style={{boxShadow: '0 0 15px rgba(0, 229, 153, 0.4)'}}
               title={`View Source ${citationNum}`}
             >
               {part}
@@ -161,37 +162,53 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
   }
 
   return (
-    <div className="flex h-[calc(100vh-180px)] bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-      <div className={`flex flex-col flex-1 border-r border-gray-200 transition-all ${activeSource ? 'w-2/3' : 'w-full'}`}>
-        <div className="border-b border-gray-200 p-4 flex flex-col">
-          <h2 className="text-2xl font-bold text-gray-900">Chat</h2>
-          <p className="text-gray-600 text-sm mt-1">
-            Context: <span className="font-medium text-blue-600">
-              {collectionTitle ? `Collection - ${collectionTitle}` : `Document - ${documentTitle}`}
+    <div className={`flex h-[calc(100vh-220px)] bg-gradient-to-b from-[#141D21] to-[#0B1215] overflow-hidden transition-all duration-300 ${activeSource ? '' : ''}`}>
+      <div className={`flex flex-col flex-1 transition-all duration-300 ${activeSource ? 'w-2/3' : 'w-full'}`}>
+        {/* Chat Header */}
+        <div className="border-b border-emerald-500/30 p-6 flex flex-col glass-effect-light">
+          <h2 className="text-3xl font-bold gradient-text mb-2">💬 NEURAL DIALOGUE</h2>
+          <p className="text-emerald-100/70 text-sm flex items-center gap-2">
+            <span className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" style={{boxShadow: '0 0 10px #00C2FF'}}></span>
+            Context: <span className="font-semibold text-emerald-100">
+              {collectionTitle ? `Collection • ${collectionTitle}` : `Document • ${documentTitle}`}
             </span>
           </p>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-gray-500">
-              Ask a question to search your knowledge base...
+            <div className="flex h-full items-center justify-center text-center">
+              <div>
+                <div className="text-6xl mb-4 animate-bounce">⚡</div>
+                <p className="text-emerald-100 text-lg font-bold">INITIALIZE CONVERSATION</p>
+                <p className="text-cyan-300/60 text-sm mt-2">Neural network awaiting input...</p>
+              </div>
             </div>
           ) : (
             messages.map((msg, idx) => (
-              <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-4 shadow-sm ${msg.type === 'user' ? 'bg-blue-600 text-white rounded-l-lg rounded-br-lg' : 'bg-white text-gray-900 rounded-r-lg rounded-bl-lg border border-gray-200'}`}>
-                  <p className="whitespace-pre-wrap leading-relaxed">
+              <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'} animate-slide-up`} style={{animationDelay: `${idx * 50}ms`}}>
+                <div className={`max-w-[80%] p-4 rounded-2xl backdrop-blur-md transition-all duration-300 ${
+                  msg.type === 'user'
+                    ? 'bg-emerald-500 text-white shadow-lg border border-emerald-500 font-semibold'
+                    : 'glass-effect-light text-emerald-100 border border-emerald-400/30 hover:border-emerald-400/60'
+                }`} style={msg.type === 'user' ? {boxShadow: '0 0 30px rgba(0, 229, 153, 0.4)'} : {}}>
+                  <p className="whitespace-pre-wrap leading-relaxed font-medium">
                     {msg.type === 'assistant' ? renderMessageContent(msg.content, msg.sources) : msg.content}
                   </p>
-                  
+
                   {msg.sources && msg.sources.length > 0 && msg.type === 'assistant' && (
-                    <div className="mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500 flex flex-wrap gap-2">
-                       <span className="font-medium text-gray-700">Sources:</span>
+                    <div className="mt-4 pt-4 border-t border-emerald-400/20 text-xs text-cyan-300/80 flex flex-wrap gap-2">
+                       <span className="font-bold text-emerald-100 block w-full">📚 SOURCES:</span>
                        {msg.sources.map((src, i) => (
-                         <div key={i} className="bg-gray-100 px-2 py-1 rounded">
-                           [{src.citation_number}] {src.document_title} (Page {src.page_number ?? 'N/A'})
-                         </div>
+                         <button
+                           key={i}
+                           onClick={() => setActiveSource(src)}
+                           className="bg-[#141D21]/80 hover:bg-slate-700/70 px-3 py-1.5 rounded-lg border border-emerald-400/30 hover:border-emerald-400/60 transition-all duration-200 hover:shadow-lg"
+                           style={{boxShadow: 'hover: 0 0 15px rgba(0, 229, 153, 0.3)'}}
+                         >
+                           [{src.citation_number}] {src.document_title} • Page {src.page_number ?? 'N/A'}
+                         </button>
                        ))}
                     </div>
                   )}
@@ -199,71 +216,136 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
               </div>
             ))
           )}
+
           {loading && (
-            <div className="flex justify-start">
-              <div className="bg-white border border-gray-200 rounded-r-lg rounded-bl-lg p-4 shadow-sm text-gray-500 italic">
-                Agent is typing...
+            <div className="flex justify-start animate-slide-up">
+              <div className="glass-effect-light border border-emerald-400/30 rounded-2xl p-4" style={{boxShadow: '0 0 20px rgba(0, 229, 153, 0.2)'}}>
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></span>
+                    <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></span>
+                    <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></span>
+                  </div>
+                  <span className="text-emerald-100 font-bold">PROCESSING DATA...</span>
+                </div>
               </div>
             </div>
           )}
-          {error && <div className="text-red-600 text-center text-sm p-2">{error}</div>}
+
+          {error && (
+            <div className="text-emerald-100 text-center text-sm p-4 bg-purple-400/10 border border-emerald-400/30 rounded-2xl font-bold">
+              ⚠️ SYSTEM ERROR: {error}
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
-        
+
+        {/* Reasoning Section */}
         {reasoning.length > 0 && (
-          <div className="border-t border-gray-200 bg-white p-2">
-             <button onClick={() => setShowReasoning(!showReasoning)} className="text-sm font-medium text-gray-600 hover:text-gray-900 flex items-center px-2">
-               {showReasoning ? '▼ Hide' : '▶ Show'} Agent Trace ({reasoning.length})
+          <div className="border-t border-emerald-400/30 bg-[#0B1215]/50 p-4">
+             <button
+               onClick={() => setShowReasoning(!showReasoning)}
+               className="text-sm font-bold text-emerald-100 hover:text-purple-200 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-emerald-400/10 transition-all"
+             >
+               <span className={`transform transition-transform ${showReasoning ? 'rotate-90' : ''}`}>▶</span>
+               PROCESS LOG ({reasoning.length})
              </button>
              {showReasoning && (
-               <div className="text-xs font-mono mt-2 p-2 mx-2 bg-gray-50 rounded max-h-32 overflow-y-auto space-y-1 border border-gray-200">
-                 {reasoning.map((r, i) => <div key={i}>{r}</div>)}
+               <div className="text-xs font-mono mt-3 p-3 mx-2 bg-black/50 rounded-xl max-h-40 overflow-y-auto space-y-1 border border-emerald-400/20 text-cyan-300/80">
+                 {reasoning.map((r, i) => (
+                   <div key={i} className="hover:text-emerald-100 transition-colors">
+                     <span className="text-emerald-100">→</span> {r}
+                   </div>
+                 ))}
                </div>
              )}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="border-t border-gray-200 p-4 bg-white flex gap-3">
-           <input type="text" value={input} onChange={e => setInput(e.target.value)} disabled={loading} placeholder="Ask a question..." className="flex-1 p-3 border border-gray-300 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
-           <button type="submit" disabled={loading || !input.trim()} className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg disabled:opacity-50 transition-colors">Send</button>
+        {/* Input Form */}
+        <form onSubmit={handleSubmit} className="border-t border-emerald-400/30 p-6 bg-[#0B1215]/50 flex gap-3 backdrop-blur">
+           <input
+             type="text"
+             value={input}
+             onChange={e => setInput(e.target.value)}
+             disabled={loading}
+             placeholder="SEND MESSAGE..."
+             className="flex-1 px-4 py-3 bg-[#141D21]/80 text-emerald-100 placeholder-cyan-300/50 border border-emerald-400/30 rounded-xl outline-none focus:border-emerald-400/80 focus:ring-2 focus:ring-emerald-400/20 transition-all duration-300 font-bold"
+           />
+           <button
+             type="submit"
+             disabled={loading || !input.trim()}
+             className="px-8 py-3 bg-emerald-500 text-white font-bold rounded-xl disabled:opacity-40 hover:shadow-lg transition-all duration-300 border border-emerald-500"
+             style={{boxShadow: '0 0 20px rgba(0, 229, 153, 0.3)'}}
+           >
+             SEND
+           </button>
         </form>
       </div>
 
+      {/* Source Viewer Panel */}
       {activeSource && (
-        <div className="w-1/3 bg-gray-50 flex flex-col border-l border-gray-200 shadow-inner overflow-hidden">
-           <div className="p-4 border-b border-gray-200 bg-white flex justify-between items-center shadow-sm">
-             <h3 className="font-bold text-gray-800">Source Viewer</h3>
-             <button onClick={() => setActiveSource(null)} className="text-gray-500 hover:bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center transition-colors" title="Close Panel">
+        <div className="w-1/3 glass-effect-light flex flex-col border-l border-emerald-400/30 shadow-2xl overflow-hidden animate-slide-in-right">
+           <div className="p-5 border-b border-emerald-400/30 bg-gradient-to-r from-purple-600/20 to-purple-500/20 flex justify-between items-center">
+             <h3 className="font-bold gradient-text text-lg">📖 SOURCE DETAILS</h3>
+             <button
+               onClick={() => setActiveSource(null)}
+               className="text-emerald-100 hover:text-purple-200 hover:bg-red-500/20 rounded-lg w-8 h-8 flex items-center justify-center transition-all duration-200 font-bold"
+               title="Close Panel"
+             >
                ✕
              </button>
            </div>
-           <div className="p-6 overflow-y-auto flex-1">
-             <div className="mb-6 pb-4 border-b border-gray-200">
-               <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-1">Document</h4>
-               <p className="text-lg text-gray-900 font-medium leading-tight">{activeSource.document_title || `Document #${activeSource.document_id}`}</p>
+           <div className="p-6 overflow-y-auto flex-1 space-y-6">
+             <div className="pb-4 border-b border-emerald-400/20">
+               <h4 className="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-2">Document</h4>
+               <p className="text-lg text-emerald-100 font-semibold">{activeSource.document_title || `Document #${activeSource.document_id}`}</p>
              </div>
-             <div className="mb-6 pb-4 border-b border-gray-200 flex justify-between">
+
+             <div className="flex justify-between gap-4">
                <div>
-                 <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-1">Page</h4>
-                 <p className="text-xl text-blue-600 font-bold">{activeSource.page_number || 'N/A'}</p>
+                 <h4 className="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-2">Page</h4>
+                 <p className="text-2xl text-emerald-100 font-bold">{activeSource.page_number || 'N/A'}</p>
                </div>
                {activeSource.score !== undefined && (
-                 <div className="text-right">
-                   <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-1">Relevance</h4>
-                   <p className="text-xl text-green-600 font-bold">{Math.round(activeSource.score * 100)}%</p>
+                 <div>
+                   <h4 className="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-2">Relevance</h4>
+                   <div className="flex items-center gap-2">
+                     <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold text-sm" style={{boxShadow: '0 0 20px rgba(0, 229, 153, 0.4)'}}>
+                       {Math.round(activeSource.score * 100)}%
+                     </div>
+                   </div>
                  </div>
                )}
              </div>
+
              <div>
-               <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-3">Extracted Snippet</h4>
-               <div className="bg-white border border-gray-200 rounded-lg p-4 font-serif text-sm leading-relaxed text-gray-800 shadow-sm relative overflow-hidden">
-                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
-                 {activeSource.text_preview || activeSource.text}
+               <h4 className="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-3">Extracted Content</h4>
+               <div className="bg-[#0B1215]/50 border border-emerald-400/20 rounded-xl p-4 font-serif text-sm leading-relaxed text-emerald-100 relative overflow-hidden">
+                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-purple-400 to-purple-600"></div>
+                 <div className="pl-3">{activeSource.text_preview || activeSource.text}</div>
                </div>
              </div>
            </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes slideInRight {
+          from {
+            opacity: 0;
+            transform: translateX(30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        div.animate-slide-in-right {
+          animation: slideInRight 0.5s ease-out;
+        }
+      `}</style>
     </div>
   )
 }

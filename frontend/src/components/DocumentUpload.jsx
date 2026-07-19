@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
+import '../App.css'
 
 export default function DocumentUpload({ onSuccess }) {
   const [file, setFile] = useState(null)
@@ -8,7 +9,7 @@ export default function DocumentUpload({ onSuccess }) {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [dragActive, setDragActive] = useState(false)
-  
+
   const [collections, setCollections] = useState([])
   const [selectedCollectionId, setSelectedCollectionId] = useState('')
 
@@ -60,8 +61,8 @@ export default function DocumentUpload({ onSuccess }) {
     if (selectedFile) {
       if (selectedFile.type === 'application/pdf') {
         setFile(selectedFile)
-        setError('') // Clear any previous errors
-        setSuccess(false) // Clear success message so user can upload again
+        setError('')
+        setSuccess(false)
       } else {
         setError('Please upload a PDF file')
         setFile(null)
@@ -84,15 +85,14 @@ export default function DocumentUpload({ onSuccess }) {
     try {
       const formData = new FormData()
       formData.append('file', file)
-      // 'title' is required by the backend model; derive it from the filename
       const titleFromFile = file.name.replace(/\.pdf$/i, '')
       formData.append('title', titleFromFile)
-      
+
       if (selectedCollectionId) {
         formData.append('collection', selectedCollectionId)
       }
 
-      const response = await api.post('/documents/upload/', formData, {
+      await api.post('/documents/upload/', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -106,18 +106,15 @@ export default function DocumentUpload({ onSuccess }) {
 
       setSuccess(true)
       setFile(null)
-      setProgress(100) // Show 100% completion
+      setProgress(100)
 
-      // Clear success message after 5 seconds so user has time to see it
       setTimeout(() => {
         setSuccess(false)
         setProgress(0)
       }, 5000)
 
-      // Trigger refresh of document list
       onSuccess()
     } catch (err) {
-      // Only show error if status is actually an error (not 2xx)
       if (err.response?.status && err.response.status >= 400) {
         const errorMessage =
           err.response?.data?.detail ||
@@ -126,10 +123,8 @@ export default function DocumentUpload({ onSuccess }) {
           'Upload failed. Please try again.'
         setError(errorMessage)
       } else if (err.message && err.message !== 'Network Error') {
-        // Ignore network errors that might occur after successful upload
         setError('Upload failed. Please try again.')
       }
-      // If no clear error, assume success (document may have been created)
     } finally {
       setUploading(false)
     }
@@ -137,16 +132,17 @@ export default function DocumentUpload({ onSuccess }) {
 
   return (
     <div className="p-8">
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">Upload Document</h2>
-      <p className="text-gray-600 mb-8">Upload PDF files to make them available for querying</p>
+      <h2 className="text-3xl font-bold gradient-text mb-2">📤 UPLOAD DOCUMENT</h2>
+      <p className="text-emerald-100/70 mb-8 font-semibold">Add PDF files to initialize knowledge matrix</p>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Collection Selector */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Target Collection</label>
-          <select 
+          <label className="block text-sm font-bold text-emerald-100 mb-2 uppercase tracking-wide">🗂️ TARGET COLLECTION</label>
+          <select
             value={selectedCollectionId}
             onChange={(e) => setSelectedCollectionId(e.target.value)}
-            className="w-full border-gray-300 rounded-lg shadow-sm p-3 border focus:ring-blue-500 focus:border-blue-500"
+            className="w-full bg-[#141D21]/80 text-emerald-100 border border-emerald-400/30 rounded-xl p-3 focus:border-emerald-400/80 focus:ring-2 focus:ring-emerald-400/20 outline-none transition-all font-bold"
             disabled={collections.length === 0}
           >
             {collections.length === 0 ? (
@@ -165,10 +161,10 @@ export default function DocumentUpload({ onSuccess }) {
           onDragLeave={handleDrag}
           onDragOver={handleDrag}
           onDrop={handleDrop}
-          className={`border-2 border-dashed rounded-lg p-12 text-center transition ${
+          className={`relative border-2 border-dashed rounded-2xl p-16 text-center transition-all duration-300 ${
             dragActive
-              ? 'border-blue-500 bg-blue-50'
-              : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+              ? 'border-emerald-400 bg-emerald-500/10 scale-105'
+              : 'border-emerald-400/30 hover:border-emerald-400/60 hover:bg-zinc-800/20'
           }`}
         >
           <input
@@ -181,69 +177,68 @@ export default function DocumentUpload({ onSuccess }) {
           />
           <label
             htmlFor="file-input"
-            className="cursor-pointer flex flex-col items-center gap-2"
+            className="cursor-pointer flex flex-col items-center gap-4"
           >
-            <svg
-              className="w-12 h-12 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
-              />
-            </svg>
-            <p className="text-gray-600">
-              Drag and drop your PDF here, or <span className="text-blue-600 font-medium">click to select</span>
-            </p>
-            <p className="text-sm text-gray-500">PDF files only</p>
+            <div className="text-5xl animate-bounce">📄</div>
+            <div>
+              <p className="text-emerald-100 font-bold text-lg">
+                DROP FILE HERE
+              </p>
+              <p className="text-emerald-100/70 text-sm mt-1">
+                or <span className="text-emerald-100 font-bold hover:underline">CLICK TO SELECT</span>
+              </p>
+              <p className="text-emerald-100/60 text-xs mt-2">PDF FORMAT ONLY</p>
+            </div>
           </label>
         </div>
 
         {/* Selected File Display */}
         {file && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-blue-900 font-medium">Selected: {file.name}</p>
-            <p className="text-blue-700 text-sm">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-          </div>
-        )}
-
-        {/* Error Message - only show if there's an actual error and not in success state */}
-        {error && !success && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-700">⚠️ {error}</p>
-          </div>
-        )}
-
-        {/* Success Message - takes priority */}
-        {success && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <p className="text-green-700 font-medium">✅ Document uploaded successfully!</p>
-            <p className="text-green-600 text-sm">
-              <strong>{file?.name || 'Your document'}</strong> is being processed.
+          <div className="glass-effect-light border border-emerald-400/50 rounded-2xl p-5 animate-scale-in">
+            <p className="text-emerald-100 font-bold flex items-center gap-2">
+              <span>✅</span> {file.name}
             </p>
-            <p className="text-green-600 text-sm">
-              Check "My Documents" to see the status. It will change to <strong>Ready</strong> when processing completes.
+            <p className="text-emerald-100/70 text-sm mt-1">📊 {(file.size / 1024 / 1024).toFixed(2)} MB</p>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && !success && (
+          <div className="glass-effect-light border border-red-500/50 rounded-2xl p-5 animate-shake">
+            <p className="text-red-400 font-bold flex items-center gap-2">
+              <span>⚠️</span> {error}
+            </p>
+          </div>
+        )}
+
+        {/* Success Message */}
+        {success && (
+          <div className="glass-effect-light border border-emerald-400/50 rounded-2xl p-5 animate-scale-in">
+            <p className="text-emerald-100 font-bold mb-2">🎉 UPLOAD SUCCESSFUL!</p>
+            <p className="text-emerald-100/80 text-sm mb-1">
+              <strong>{file?.name || 'Document'}</strong> processing initiated.
+            </p>
+            <p className="text-emerald-100/80 text-sm">
+              Check "My Documents" for status. Status: <strong>Ready</strong> when processing complete.
             </p>
           </div>
         )}
 
         {/* Progress Bar */}
         {progress > 0 && (
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <p className="text-sm font-medium text-gray-700">
-                {uploading ? 'Uploading...' : 'Upload complete!'}
+          <div className="space-y-3">
+            <div className="flex justify-between items-center px-2">
+              <p className="text-sm font-bold text-emerald-100">
+                {uploading ? `UPLOADING... ${progress}%` : '✨ COMPLETE!'}
               </p>
-              <p className="text-sm text-gray-600">{progress}%</p>
+              <p className="text-sm text-emerald-100 font-bold">{progress}%</p>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full h-3 bg-zinc-700/50 rounded-full overflow-hidden border border-emerald-400/30">
               <div
-                className={`h-2 rounded-full transition-all duration-300 ${
-                  progress === 100 ? 'bg-green-600' : 'bg-blue-600'
+                className={`h-full rounded-full transition-all duration-300 ${
+                  progress === 100
+                    ? 'bg-emerald-500'
+                    : 'bg-gradient-to-r from-yellow-400 to-yellow-300'
                 }`}
                 style={{ width: `${progress}%` }}
               />
@@ -255,11 +250,23 @@ export default function DocumentUpload({ onSuccess }) {
         <button
           type="submit"
           disabled={!file || uploading}
-          className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 transition"
+          className="w-full bg-emerald-500 text-black py-4 rounded-xl font-bold hover:shadow-2xl disabled:opacity-40 transition-all duration-300 border border-yellow-300 text-lg"
+          style={{boxShadow: '0 0 30px rgba(0, 229, 153, 0.2)'}}
         >
-          {uploading ? `Uploading... ${progress}%` : 'Upload PDF'}
+          {uploading ? `⚡ UPLOADING... ${progress}%` : '🚀 UPLOAD PDF'}
         </button>
       </form>
+
+      <style>{`
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+          20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        .animate-shake {
+          animation: shake 0.5s;
+        }
+      `}</style>
     </div>
   )
 }
