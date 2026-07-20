@@ -22,13 +22,13 @@ This document describes the target architecture *after* the v2 upgrade. It contr
 └──────────┬──────────────────────────────────┬──────────────────┘
            │                                  │
            ▼                                  ▼
-┌──────────────────────┐         ┌────────────────────────────────┐
-│  Celery + Redis      │         │       LangGraph Agent          │
-│  - Async PDF ETL     │         │   ┌──────────────────────┐     │
-│  - Per-page chunking │         │   │  route_query         │     │
-│  - Embedding         │         │   │  retrieve (hybrid)   │     │
-│  - Page-aware chunks │         │   │  grade_documents     │     │
-└──────────┬───────────┘         │   │  rewrite_query       │     │
+┌──────────────────────┐          ┌────────────────────────────────┐
+│  Celery + Redis      │          │       LangGraph Agent          │
+│  - Async PDF ETL     │          │   ┌──────────────────────┐     │
+│  - Per-page chunking │          │   │  route_query         │     │
+│  - Embedding         │          │   │  retrieve (hybrid)   │     │
+│  - Page-aware chunks │          │   │  grade_documents     │     │
+└──────────┬───────────┘          │   │  rewrite_query       │     │
            │                      │   │  web_search          │     │
            ▼                      │   │  generate_answer     │     │
 ┌────────────────────────────────┐│   │   (with citations)   │     │
@@ -43,12 +43,12 @@ This document describes the target architecture *after* the v2 upgrade. It contr
 
 Offline (developer-side, runs from CLI):
 ┌────────────────────────────────────────────────────────────────┐
-│  Evaluation Harness                                             │
-│  eval/run_eval.py    eval/run_ablations.py                      │
-│  - Loads test set    - Toggles graph flags                      │
-│  - Calls retrieval / agent directly (no HTTP)                   │
-│  - Computes recall@5, MRR, faithfulness, answer relevance       │
-│  - Writes results/<timestamp>.{json,md}                         │
+│  Evaluation Harness                                            │
+│  eval/run_eval.py    eval/run_ablations.py                     │
+│  - Loads test set    - Toggles graph flags                     │
+│  - Calls retrieval / agent directly (no HTTP)                  │
+│  - Computes recall@5, MRR, faithfulness, answer relevance      │
+│  - Writes results/<timestamp>.{json,md}                        │
 └────────────────────────────────────────────────────────────────┘
 ```
 
