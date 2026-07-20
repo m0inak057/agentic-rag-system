@@ -197,6 +197,28 @@ SIMPLE_JWT = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# ─── Logging (send errors to console so Render's log stream shows tracebacks) ───
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+    },
+}
+
 # ─── Celery Configuration ───
 # In development, run tasks synchronously (no Redis/broker needed)
 if os.getenv('ENVIRONMENT') == 'production':
