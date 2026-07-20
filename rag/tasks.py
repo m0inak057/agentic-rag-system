@@ -5,7 +5,7 @@ These tasks run in the background, keeping the API responsive.
 
 from celery import shared_task
 from django.core.files.storage import default_storage
-import fitz
+import pdfplumber
 
 from .models import Document, DocumentChunk
 
@@ -40,7 +40,6 @@ def process_document_task(self, document_id: int) -> dict:
     """
     from .services import extract_chunks_with_pages # Moved import here
     from .models import Document, DocumentChunk
-    import fitz # Moved import here
     
     try:
         # Get the document
@@ -85,13 +84,13 @@ def process_document_task(self, document_id: int) -> dict:
         # Step 4: Update document status and page count
         document.status = 'ready'
         document.chunks_count = len(chunk_objects)
-        
+
         # Get page count from the PDF
         try:
-            with fitz.open(file_path) as doc:
-                document.page_count = len(doc)
+            with pdfplumber.open(file_path) as pdf:
+                document.page_count = len(pdf.pages)
         except Exception:
-            document.page_count = 0 # Or handle as an error
+            document.page_count = 0
             
         document.error_message = None
         document.save()
@@ -123,23 +122,22 @@ def process_document_task(self, document_id: int) -> dict:
 
 def extract_text_from_pdf(file_path: str) -> str:
     """
-    Extract text from a PDF file using PyMuPDF (fitz).
-    
+    Extract text from a PDF file using pdfplumber.
+
     Args:
         file_path: Path to the PDF file
-    
+
     Returns:
         Extracted text as a string
     """
     text = ""
     try:
-        doc = fitz.open(file_path)
-        for page in doc:
-            text += page.get_text()
-        doc.close()
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                text += page.extract_text() or ""
     except Exception as e:
         raise ValueError(f"Failed to extract text from PDF: {str(e)}")
-    
+
     return text
 
 

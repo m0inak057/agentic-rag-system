@@ -10,7 +10,7 @@ This module contains TWO pipelines:
      User Question → Embed Question → Vector Search → Build Prompt → LLM Answer
 """
 
-import fitz  # PyMuPDF — fast and accurate PDF text extraction
+import pdfplumber
 from pgvector.django import CosineDistance
 from django.conf import settings
 from .models import Document, DocumentChunk, ChatConversation, ChatMessage
@@ -42,29 +42,28 @@ def extract_chunks_with_pages(file_path: str, chunk_size: int = 1000, overlap: i
     Chunks do not span across page boundaries.
     """
     chunks_with_pages = []
-    doc = fitz.open(file_path)
-    
-    for page_num, page in enumerate(doc):
-        text = page.get_text("text")
-        if not text.strip():
-            continue
 
-        page_chunks = []
-        start = 0
-        while start < len(text):
-            end = start + chunk_size
-            chunk_text = text[start:end]
-            if chunk_text.strip():
-                page_chunks.append(chunk_text.strip())
-            start += chunk_size - overlap
-        
-        for chunk in page_chunks:
-            chunks_with_pages.append({
-                "text": chunk,
-                "page_number": page_num + 1  # 1-based page number
-            })
-            
-    doc.close()
+    with pdfplumber.open(file_path) as pdf:
+        for page_num, page in enumerate(pdf.pages):
+            text = page.extract_text() or ""
+            if not text.strip():
+                continue
+
+            page_chunks = []
+            start = 0
+            while start < len(text):
+                end = start + chunk_size
+                chunk_text = text[start:end]
+                if chunk_text.strip():
+                    page_chunks.append(chunk_text.strip())
+                start += chunk_size - overlap
+
+            for chunk in page_chunks:
+                chunks_with_pages.append({
+                    "text": chunk,
+                    "page_number": page_num + 1  # 1-based page number
+                })
+
     return chunks_with_pages
 
 
@@ -116,11 +115,10 @@ def process_document(document) -> int:
     ]
     
     DocumentChunk.objects.bulk_create(chunk_objects)
-    
+
     # Update page count on the document
-    doc = fitz.open(file_path)
-    document.page_count = len(doc)
-    doc.close()
+    with pdfplumber.open(file_path) as pdf:
+        document.page_count = len(pdf.pages)
     document.save()
     
     return len(chunk_objects)

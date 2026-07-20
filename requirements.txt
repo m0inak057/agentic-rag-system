@@ -26,7 +26,7 @@ langchain-google-genai==2.0.10
 openai==1.109.1
 
 # Document Processing
-PyMuPDF==1.23.8
+pdfplumber==0.10.3
 
 # Search & Ranking
 rank-bm25==0.2.2
