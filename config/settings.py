@@ -78,7 +78,7 @@ ROOT_URLCONF = 'config.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'frontend' / 'dist'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -164,6 +164,12 @@ STORAGES = {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
+
+# Serve the built React SPA's JS/CSS (frontend/dist/assets/...) directly from
+# the URL root, since Vite emits root-relative paths like /assets/index.js
+# rather than /static/assets/index.js. This is separate from STATIC_ROOT/
+# STATIC_URL, which stay reserved for Django's own static files (DRF, admin).
+WHITENOISE_ROOT = BASE_DIR / 'frontend' / 'dist'
 
 # Media files
 MEDIA_URL = '/media/'

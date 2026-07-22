@@ -15,39 +15,17 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, re_path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
+from django.views.generic import TemplateView
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,   # POST /api/auth/token/       -> Login (get tokens)
     TokenRefreshView,      # POST /api/auth/token/refresh/ -> Refresh access token
 )
 from rag.views import RegisterView
 
-class RootView(APIView):
-    """Welcome endpoint with API links"""
-    permission_classes = [AllowAny]
-
-    def get(self, request):
-        return Response({
-            'message': '🎯 Agentic RAG API is running!',
-            'api_endpoints': {
-                'documents': '/api/documents/',
-                'chat': '/api/chat/',
-                'usage_stats': '/api/usage-stats/',
-                'provider_status': '/api/llm-provider-status/',
-            },
-            'auth': {
-                'login': '/api/auth/token/',
-                'refresh': '/api/auth/token/refresh/',
-            }
-        })
-
 urlpatterns = [
-    path('', RootView.as_view(), name='root'),
     path('admin/', admin.site.urls),
 
     # --- Authentication Endpoints ---
@@ -64,5 +42,9 @@ urlpatterns = [
     # e.g., POST /api/documents/upload/
     path('api/', include('rag.urls')),
 
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-# The last line makes Django serve uploaded files (PDF) during development.
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) + [
+    # Catch-all: serve the React SPA shell for any route that isn't the API,
+    # admin, media, or Django's own static files. Must stay last so the
+    # patterns above take precedence.
+    re_path(r'^(?!api/|admin/|media/|static/).*$', TemplateView.as_view(template_name='index.html')),
+]
