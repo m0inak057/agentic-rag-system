@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
-import '../App.css'
+import Spinner from './Spinner'
 
 export default function CollectionList({ onSelectCollection }) {
   const [collections, setCollections] = useState([])
@@ -61,102 +61,95 @@ export default function CollectionList({ onSelectCollection }) {
 
   if (loading) {
     return (
-      <div className="p-12 text-center">
-        <div className="text-4xl mb-4 animate-spin">📁</div>
-        <p className="text-emerald-100 font-bold">LOADING COLLECTIONS...</p>
+      <div className="p-12 flex justify-center">
+        <Spinner />
       </div>
     )
   }
 
+  const inputClass =
+    'w-full px-3.5 py-2.5 bg-white text-text-primary placeholder-text-muted border border-border rounded-md outline-none transition-colors duration-150 focus:border-accent focus:ring-[3px] focus:ring-accent/10'
+
   return (
     <div className="p-8">
-      <div className="flex justify-between items-center mb-8">
-        <h2 className="text-3xl font-bold gradient-text">📁 MY COLLECTIONS</h2>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-semibold text-text-primary">Collections</h2>
         <button
           onClick={fetchCollections}
-          className="px-6 py-2.5 bg-emerald-500/20 text-emerald-100 font-bold rounded-xl hover:bg-emerald-500/30 border border-emerald-400/30 transition-all duration-300"
-          style={{boxShadow: '0 0 15px rgba(0, 229, 153, 0.2)'}}
+          className="px-4 py-2 bg-white text-text-primary font-medium text-sm rounded-md border border-border transition-colors duration-150 hover:bg-bg-secondary"
         >
-          🔄 REFRESH
+          Refresh
         </button>
       </div>
 
       {error && (
-        <div className="glass-effect-light border border-red-500/50 rounded-2xl p-5 mb-8">
-          <p className="text-red-400 font-bold flex items-center gap-2">
-            <span>⚠️</span> {error}
-          </p>
+        <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+          <p className="text-error text-sm">{error}</p>
         </div>
       )}
 
       {/* Create new collection form */}
-      <form onSubmit={handleCreate} className="glass-effect-light border border-emerald-400/30 rounded-2xl p-6 mb-8 space-y-3">
-        <h3 className="text-lg font-bold gradient-text mb-4">✨ CREATE COLLECTION</h3>
+      <form onSubmit={handleCreate} className="bg-white border border-border rounded-lg p-6 mb-8 space-y-3 max-w-xl">
+        <h3 className="text-sm font-semibold text-text-primary mb-1">Create collection</h3>
         <input
           type="text"
-          placeholder="Collection Name"
+          placeholder="Collection name"
           value={newCollectionName}
           onChange={(e) => setNewCollectionName(e.target.value)}
-          className="w-full px-4 py-3 bg-[#141D21]/80 text-emerald-100 placeholder-cyan-300/50 border border-emerald-400/30 rounded-xl focus:border-emerald-400/80 focus:ring-2 focus:ring-emerald-400/20 outline-none transition-all font-bold"
+          className={inputClass}
         />
         <input
           type="text"
           placeholder="Description (optional)"
           value={newCollectionDesc}
           onChange={(e) => setNewCollectionDesc(e.target.value)}
-          className="w-full px-4 py-3 bg-[#141D21]/80 text-emerald-100 placeholder-cyan-300/50 border border-emerald-400/30 rounded-xl focus:border-emerald-400/80 focus:ring-2 focus:ring-emerald-400/20 outline-none transition-all font-bold"
+          className={inputClass}
         />
         <button
           type="submit"
           disabled={creating || !newCollectionName.trim()}
-          className="w-full px-6 py-3 bg-emerald-500 text-black font-bold rounded-xl hover:shadow-2xl disabled:opacity-50 transition-all duration-300 border border-yellow-300"
-          style={{boxShadow: '0 0 20px rgba(0, 229, 153, 0.2)'}}
+          className="px-5 py-2.5 bg-accent text-white font-medium text-sm rounded-md transition-colors duration-150 hover:bg-accent-hover disabled:opacity-50"
         >
-          {creating ? '⚡ CREATING...' : '✨ CREATE'}
+          {creating ? 'Creating…' : 'Create'}
         </button>
       </form>
 
       {/* Collections List */}
       {collections.length === 0 ? (
         <div className="text-center py-16">
-          <div className="text-6xl mb-4 animate-bounce">📁</div>
-          <p className="text-emerald-100 text-xl font-bold">NO COLLECTIONS</p>
-          <p className="text-emerald-100/60 mt-2">Create one above to organize your knowledge base</p>
+          <p className="text-text-primary font-medium">No collections yet</p>
+          <p className="text-text-secondary text-sm mt-1">Create one above to organize your knowledge base</p>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {collections.map((col, idx) => (
+          {collections.map((col) => (
             <div
               key={col.id}
-              className="glass-effect-light border border-emerald-400/30 rounded-2xl p-6 hover:border-emerald-400/60 transition-all duration-300 flex flex-col justify-between animate-slide-up"
-              style={{animationDelay: `${idx * 50}ms`, boxShadow: '0 0 20px rgba(0, 229, 153, 0.1)'}}
+              className="bg-white border border-border rounded-lg p-5 flex flex-col justify-between"
             >
               <div>
-                <h3 className="font-bold text-lg text-emerald-100 mb-2 flex items-center gap-2">
-                  <span>🗂️</span> {col.name}
-                </h3>
-                <p className="text-emerald-100/70 text-sm mb-4 min-h-10 line-clamp-2">
+                <h3 className="font-semibold text-sm text-text-primary mb-1.5">{col.name}</h3>
+                <p className="text-text-secondary text-sm mb-4 min-h-10 line-clamp-2">
                   {col.description || 'No description'}
                 </p>
-                <div className="text-sm bg-emerald-500/20 text-emerald-100 px-3 py-1.5 rounded-lg inline-block font-bold border border-emerald-400/30">
-                  📊 {col.document_count} Documents
+                <div className="text-xs bg-bg-tertiary text-text-secondary px-2.5 py-1 rounded-md inline-block border border-border">
+                  {col.document_count} documents
                 </div>
               </div>
 
-              <div className="flex justify-between items-center gap-2 pt-5 border-t border-emerald-400/20 mt-5">
+              <div className="flex justify-between items-center gap-2 pt-4 border-t border-border mt-4">
                 <button
                   onClick={() => onSelectCollection?.({ id: col.id, title: col.name })}
-                  className="flex-1 px-4 py-2.5 bg-emerald-500 text-black font-bold text-sm rounded-lg shadow-lg transition-all duration-300 border border-yellow-300"
-                  style={{boxShadow: '0 0 15px rgba(0, 229, 153, 0.3)'}}
+                  className="flex-1 px-4 py-2 bg-accent text-white font-medium text-sm rounded-md transition-colors duration-150 hover:bg-accent-hover"
                 >
-                  💬 CHAT
+                  Chat
                 </button>
                 <button
                   onClick={() => handleDelete(col.id)}
-                  className="px-4 py-2.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg border border-red-500/30 font-bold text-sm transition-all duration-300"
+                  className="px-3 py-2 text-error hover:bg-red-50 rounded-md border border-border text-sm transition-colors duration-150"
                   title="Delete collection"
                 >
-                  🗑️
+                  Delete
                 </button>
               </div>
             </div>

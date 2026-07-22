@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
-import api from '../services/api'
-import '../App.css'
+import Spinner from './Spinner'
 
 export default function Chat({ documentId, documentTitle, collectionId, collectionTitle }) {
   const [messages, setMessages] = useState([])
@@ -128,10 +127,9 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
 
   if (!documentId && !collectionId) {
     return (
-      <div className="flex flex-col h-[500px] items-center justify-center text-center p-8">
-        <div className="animate-bounce mb-4 text-5xl">🎯</div>
-        <p className="text-xl font-bold gradient-text mb-2">Select a Knowledge Source</p>
-        <p className="text-emerald-100">Pick a Document or Collection to begin your intelligent conversation.</p>
+      <div className="flex flex-col h-full items-center justify-center text-center p-8">
+        <p className="text-lg font-semibold text-text-primary mb-2">Select a knowledge source</p>
+        <p className="text-text-secondary">Pick a document or collection to start a conversation.</p>
       </div>
     )
   }
@@ -148,9 +146,8 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
             <button
               key={i}
               onClick={() => setActiveSource(sourceObj)}
-              className="inline-flex items-center justify-center mx-1 px-2 py-1 bg-emerald-500 text-white hover:bg-emerald-500 text-xs font-bold rounded-lg cursor-pointer transition-all duration-300 hover:scale-110"
-              style={{boxShadow: '0 0 15px rgba(0, 229, 153, 0.4)'}}
-              title={`View Source ${citationNum}`}
+              className="inline-flex items-center mx-0.5 px-1.5 py-0.5 bg-accent-light text-accent border border-accent-border rounded text-xs font-medium cursor-pointer transition-colors duration-150 hover:bg-accent-border"
+              title={`View source ${citationNum}`}
             >
               {part}
             </button>
@@ -161,55 +158,62 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
     })
   }
 
+  const renderReasoningLine = (line) => {
+    const match = line.match(/^(\[[A-Z]+\])(.*)$/)
+    if (match) {
+      return (
+        <>
+          <span className="text-accent font-semibold">{match[1]}</span>
+          {match[2]}
+        </>
+      )
+    }
+    return line
+  }
+
   return (
-    <div className={`flex h-[calc(100vh-220px)] bg-gradient-to-b from-[#141D21] to-[#0B1215] overflow-hidden transition-all duration-300 ${activeSource ? '' : ''}`}>
-      <div className={`flex flex-col flex-1 transition-all duration-300 ${activeSource ? 'w-2/3' : 'w-full'}`}>
+    <div className="flex h-full">
+      <div className={`flex flex-col min-h-0 ${activeSource ? 'flex-1' : 'w-full'}`}>
         {/* Chat Header */}
-        <div className="border-b border-emerald-500/30 p-6 flex flex-col glass-effect-light">
-          <h2 className="text-3xl font-bold gradient-text mb-2">💬 NEURAL DIALOGUE</h2>
-          <p className="text-emerald-100/70 text-sm flex items-center gap-2">
-            <span className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" style={{boxShadow: '0 0 10px #00C2FF'}}></span>
-            Context: <span className="font-semibold text-emerald-100">
-              {collectionTitle ? `Collection • ${collectionTitle}` : `Document • ${documentTitle}`}
-            </span>
+        <div className="border-b border-border px-8 py-5">
+          <h2 className="text-lg font-semibold text-text-primary">Chat</h2>
+          <p className="text-text-secondary text-sm mt-0.5">
+            {collectionTitle ? `Collection · ${collectionTitle}` : `Document · ${documentTitle}`}
           </p>
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
           {messages.length === 0 ? (
             <div className="flex h-full items-center justify-center text-center">
-              <div>
-                <div className="text-6xl mb-4 animate-bounce">⚡</div>
-                <p className="text-emerald-100 text-lg font-bold">INITIALIZE CONVERSATION</p>
-                <p className="text-cyan-300/60 text-sm mt-2">Neural network awaiting input...</p>
-              </div>
+              <p className="text-text-muted text-sm">No messages yet. Ask a question to begin.</p>
             </div>
           ) : (
             messages.map((msg, idx) => (
-              <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'} animate-slide-up`} style={{animationDelay: `${idx * 50}ms`}}>
-                <div className={`max-w-[80%] p-4 rounded-2xl backdrop-blur-md transition-all duration-300 ${
-                  msg.type === 'user'
-                    ? 'bg-emerald-500 text-white shadow-lg border border-emerald-500 font-semibold'
-                    : 'glass-effect-light text-emerald-100 border border-emerald-400/30 hover:border-emerald-400/60'
-                }`} style={msg.type === 'user' ? {boxShadow: '0 0 30px rgba(0, 229, 153, 0.4)'} : {}}>
-                  <p className="whitespace-pre-wrap leading-relaxed font-medium">
+              <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div
+                  className={`max-w-[80%] px-4 py-3 ${
+                    msg.type === 'user'
+                      ? 'bg-accent text-white rounded-[12px_12px_2px_12px]'
+                      : 'bg-bg-secondary text-text-primary border border-border rounded-[12px_12px_12px_2px]'
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap leading-relaxed text-sm">
                     {msg.type === 'assistant' ? renderMessageContent(msg.content, msg.sources) : msg.content}
                   </p>
 
                   {msg.sources && msg.sources.length > 0 && msg.type === 'assistant' && (
-                    <div className="mt-4 pt-4 border-t border-emerald-400/20 text-xs text-cyan-300/80 flex flex-wrap gap-2">
-                       <span className="font-bold text-emerald-100 block w-full">📚 SOURCES:</span>
-                       {msg.sources.map((src, i) => (
-                         <button
-                           key={i}
-                           onClick={() => setActiveSource(src)}
-                           className="bg-[#141D21]/80 hover:bg-slate-700/70 px-3 py-1.5 rounded-lg border border-emerald-400/30 hover:border-emerald-400/60 transition-all duration-200 hover:shadow-lg"
-                           style={{boxShadow: 'hover: 0 0 15px rgba(0, 229, 153, 0.3)'}}
-                         >
-                           [{src.citation_number}] {src.document_title} • Page {src.page_number ?? 'N/A'}
-                         </button>
-                       ))}
+                    <div className="mt-3 pt-3 border-t border-border text-xs flex flex-wrap gap-2">
+                      <span className="font-medium text-text-primary block w-full">Sources</span>
+                      {msg.sources.map((src, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setActiveSource(src)}
+                          className="bg-white hover:bg-bg-tertiary px-2.5 py-1 rounded border border-border transition-colors duration-150 text-text-secondary"
+                        >
+                          [{src.citation_number}] {src.document_title} · Page {src.page_number ?? 'N/A'}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -218,23 +222,17 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
           )}
 
           {loading && (
-            <div className="flex justify-start animate-slide-up">
-              <div className="glass-effect-light border border-emerald-400/30 rounded-2xl p-4" style={{boxShadow: '0 0 20px rgba(0, 229, 153, 0.2)'}}>
-                <div className="flex items-center gap-3">
-                  <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></span>
-                    <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></span>
-                    <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></span>
-                  </div>
-                  <span className="text-emerald-100 font-bold">PROCESSING DATA...</span>
-                </div>
+            <div className="flex justify-start">
+              <div className="bg-bg-secondary border border-border rounded-[12px_12px_12px_2px] px-4 py-3 flex items-center gap-2.5">
+                <Spinner />
+                <span className="text-text-secondary text-sm">Thinking…</span>
               </div>
             </div>
           )}
 
           {error && (
-            <div className="text-emerald-100 text-center text-sm p-4 bg-purple-400/10 border border-emerald-400/30 rounded-2xl font-bold">
-              ⚠️ SYSTEM ERROR: {error}
+            <div className="text-error text-sm px-4 py-3 bg-red-50 border border-red-200 rounded-md">
+              {error}
             </div>
           )}
 
@@ -243,109 +241,85 @@ export default function Chat({ documentId, documentTitle, collectionId, collecti
 
         {/* Reasoning Section */}
         {reasoning.length > 0 && (
-          <div className="border-t border-emerald-400/30 bg-[#0B1215]/50 p-4">
-             <button
-               onClick={() => setShowReasoning(!showReasoning)}
-               className="text-sm font-bold text-emerald-100 hover:text-purple-200 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-emerald-400/10 transition-all"
-             >
-               <span className={`transform transition-transform ${showReasoning ? 'rotate-90' : ''}`}>▶</span>
-               PROCESS LOG ({reasoning.length})
-             </button>
-             {showReasoning && (
-               <div className="text-xs font-mono mt-3 p-3 mx-2 bg-black/50 rounded-xl max-h-40 overflow-y-auto space-y-1 border border-emerald-400/20 text-cyan-300/80">
-                 {reasoning.map((r, i) => (
-                   <div key={i} className="hover:text-emerald-100 transition-colors">
-                     <span className="text-emerald-100">→</span> {r}
-                   </div>
-                 ))}
-               </div>
-             )}
+          <div className="border-t border-border bg-bg-tertiary px-6 py-3">
+            <button
+              onClick={() => setShowReasoning(!showReasoning)}
+              className="text-sm font-medium text-text-primary flex items-center gap-2 transition-colors duration-150 hover:text-accent"
+            >
+              <span className={`transition-transform duration-150 inline-block ${showReasoning ? 'rotate-90' : ''}`}>›</span>
+              Agent trace ({reasoning.length})
+            </button>
+            {showReasoning && (
+              <div className="text-xs font-mono mt-3 p-3 bg-white rounded-md max-h-40 overflow-y-auto space-y-1 border border-border text-text-secondary">
+                {reasoning.map((r, i) => (
+                  <div key={i}>{renderReasoningLine(r)}</div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {/* Input Form */}
-        <form onSubmit={handleSubmit} className="border-t border-emerald-400/30 p-6 bg-[#0B1215]/50 flex gap-3 backdrop-blur">
-           <input
-             type="text"
-             value={input}
-             onChange={e => setInput(e.target.value)}
-             disabled={loading}
-             placeholder="SEND MESSAGE..."
-             className="flex-1 px-4 py-3 bg-[#141D21]/80 text-emerald-100 placeholder-cyan-300/50 border border-emerald-400/30 rounded-xl outline-none focus:border-emerald-400/80 focus:ring-2 focus:ring-emerald-400/20 transition-all duration-300 font-bold"
-           />
-           <button
-             type="submit"
-             disabled={loading || !input.trim()}
-             className="px-8 py-3 bg-emerald-500 text-white font-bold rounded-xl disabled:opacity-40 hover:shadow-lg transition-all duration-300 border border-emerald-500"
-             style={{boxShadow: '0 0 20px rgba(0, 229, 153, 0.3)'}}
-           >
-             SEND
-           </button>
+        <form onSubmit={handleSubmit} className="border-t border-border px-8 py-5 flex gap-3">
+          <input
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            disabled={loading}
+            placeholder="Send a message…"
+            className="flex-1 px-3.5 py-2.5 bg-white text-text-primary placeholder-text-muted border border-border rounded-md outline-none transition-colors duration-150 focus:border-accent focus:ring-[3px] focus:ring-accent/10"
+          />
+          <button
+            type="submit"
+            disabled={loading || !input.trim()}
+            className="px-5 py-2.5 bg-accent text-white font-medium rounded-md transition-colors duration-150 hover:bg-accent-hover disabled:opacity-50"
+          >
+            Send
+          </button>
         </form>
       </div>
 
       {/* Source Viewer Panel */}
       {activeSource && (
-        <div className="w-1/3 glass-effect-light flex flex-col border-l border-emerald-400/30 shadow-2xl overflow-hidden animate-slide-in-right">
-           <div className="p-5 border-b border-emerald-400/30 bg-gradient-to-r from-purple-600/20 to-purple-500/20 flex justify-between items-center">
-             <h3 className="font-bold gradient-text text-lg">📖 SOURCE DETAILS</h3>
-             <button
-               onClick={() => setActiveSource(null)}
-               className="text-emerald-100 hover:text-purple-200 hover:bg-red-500/20 rounded-lg w-8 h-8 flex items-center justify-center transition-all duration-200 font-bold"
-               title="Close Panel"
-             >
-               ✕
-             </button>
-           </div>
-           <div className="p-6 overflow-y-auto flex-1 space-y-6">
-             <div className="pb-4 border-b border-emerald-400/20">
-               <h4 className="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-2">Document</h4>
-               <p className="text-lg text-emerald-100 font-semibold">{activeSource.document_title || `Document #${activeSource.document_id}`}</p>
-             </div>
+        <div className="w-96 border-l border-border flex flex-col overflow-hidden shrink-0">
+          <div className="px-5 py-4 border-b border-border flex justify-between items-center">
+            <h3 className="font-semibold text-text-primary text-sm">Source details</h3>
+            <button
+              onClick={() => setActiveSource(null)}
+              className="text-text-secondary hover:text-text-primary w-7 h-7 flex items-center justify-center rounded-md transition-colors duration-150"
+              title="Close panel"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="p-5 overflow-y-auto flex-1 space-y-5">
+            <div className="pb-4 border-b border-border">
+              <h4 className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1.5">Document</h4>
+              <p className="text-sm text-text-primary font-medium">{activeSource.document_title || `Document #${activeSource.document_id}`}</p>
+            </div>
 
-             <div className="flex justify-between gap-4">
-               <div>
-                 <h4 className="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-2">Page</h4>
-                 <p className="text-2xl text-emerald-100 font-bold">{activeSource.page_number || 'N/A'}</p>
-               </div>
-               {activeSource.score !== undefined && (
-                 <div>
-                   <h4 className="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-2">Relevance</h4>
-                   <div className="flex items-center gap-2">
-                     <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold text-sm" style={{boxShadow: '0 0 20px rgba(0, 229, 153, 0.4)'}}>
-                       {Math.round(activeSource.score * 100)}%
-                     </div>
-                   </div>
-                 </div>
-               )}
-             </div>
+            <div className="flex justify-between gap-4">
+              <div>
+                <h4 className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1.5">Page</h4>
+                <p className="text-lg text-text-primary font-semibold">{activeSource.page_number || 'N/A'}</p>
+              </div>
+              {activeSource.score !== undefined && (
+                <div>
+                  <h4 className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1.5">Relevance</h4>
+                  <p className="text-lg text-text-primary font-semibold">{Math.round(activeSource.score * 100)}%</p>
+                </div>
+              )}
+            </div>
 
-             <div>
-               <h4 className="text-xs font-bold text-cyan-300 uppercase tracking-widest mb-3">Extracted Content</h4>
-               <div className="bg-[#0B1215]/50 border border-emerald-400/20 rounded-xl p-4 font-serif text-sm leading-relaxed text-emerald-100 relative overflow-hidden">
-                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-purple-400 to-purple-600"></div>
-                 <div className="pl-3">{activeSource.text_preview || activeSource.text}</div>
-               </div>
-             </div>
-           </div>
+            <div>
+              <h4 className="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">Extracted content</h4>
+              <div className="bg-bg-secondary border border-border rounded-md p-4 text-sm leading-relaxed text-text-secondary">
+                {activeSource.text_preview || activeSource.text}
+              </div>
+            </div>
+          </div>
         </div>
       )}
-
-      <style>{`
-        @keyframes slideInRight {
-          from {
-            opacity: 0;
-            transform: translateX(30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-        div.animate-slide-in-right {
-          animation: slideInRight 0.5s ease-out;
-        }
-      `}</style>
     </div>
   )
 }
