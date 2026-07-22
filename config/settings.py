@@ -166,8 +166,8 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ),
     'DEFAULT_THROTTLE_CLASSES': (
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
+        'rag.throttling.SafeAnonRateThrottle',
+        'rag.throttling.SafeUserRateThrottle',
     ),
     'DEFAULT_THROTTLE_RATES': {
         'anon': '20/minute',
@@ -219,16 +219,19 @@ LOGGING = {
     },
 }
 
+# ─── Redis Configuration ───
+# Single source of truth for Redis, shared by the Django cache and Celery.
+# Falls back to localhost only for local development where REDIS_URL is unset.
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379')
+
 # ─── Celery Configuration ───
-# In development, run tasks synchronously (no Redis/broker needed)
-if os.getenv('ENVIRONMENT') == 'production':
-    _redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-    CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', _redis_url)
-    CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', _redis_url)
-else:
-    # Development: run tasks synchronously in the request
-    CELERY_TASK_ALWAYS_EAGER = True
-    CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
+
+# If no REDIS_URL is configured, assume local development and run tasks
+# synchronously so the app works without a broker.
+CELERY_TASK_ALWAYS_EAGER = os.environ.get('REDIS_URL') is None
+CELERY_TASK_EAGER_PROPAGATES = True
 
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
@@ -241,24 +244,18 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = 'gemini-2.5-flash'  # Most cost-effective model
 
 # Cache Configuration for tracking usage
-# Use in-memory cache for development; Redis for production
-if os.getenv('ENVIRONMENT') == 'production':
-    CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-            'LOCATION': os.getenv('REDIS_CACHE_URL', os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/1')),
-            'TIMEOUT': 86400,  # 24 hours
-        }
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': REDIS_URL,
+        'TIMEOUT': 86400,  # 24 hours
+        'OPTIONS': {
+            'socket_connect_timeout': 5,
+            'socket_timeout': 5,
+            'retry_on_timeout': True,
+        },
     }
-else:
-    # Development: use in-memory cache (no Redis required)
-    CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-            'LOCATION': 'unique-snowflake',
-            'TIMEOUT': 86400,
-        }
-    }
+}
 
 # ─── Web Search Configuration ───
 TAVILY_API_KEY = os.getenv('TAVILY_API_KEY')
