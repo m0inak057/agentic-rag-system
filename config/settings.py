@@ -259,6 +259,12 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 CELERY_WORKER_POOL = 'solo'  # Windows compatibility: disable prefork multiprocessing
 
+# ─── Gunicorn Configuration ───
+# Documents the timeout used by the gunicorn Start Command (see Procfile / Render
+# dashboard), since CELERY_TASK_ALWAYS_EAGER=True runs document processing
+# synchronously inside the web worker's request/response cycle.
+GUNICORN_TIMEOUT = 120
+
 # ─── Gemini LLM Configuration (Only LLM Provider) ───
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = 'gemini-2.5-flash'  # Most cost-effective model

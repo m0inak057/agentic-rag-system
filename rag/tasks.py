@@ -3,11 +3,15 @@ Celery tasks for asynchronous document processing.
 These tasks run in the background, keeping the API responsive.
 """
 
+import logging
+
 from celery import shared_task
 from django.core.files.storage import default_storage
 import pdfplumber
 
 from .models import Document, DocumentChunk
+
+logger = logging.getLogger(__name__)
 
 # Lazy-loaded embedding model — only initialised when a task actually runs,
 # NOT at import time (avoids blocking test startup and server restarts).
@@ -42,32 +46,43 @@ def process_document_task(self, document_id: int) -> dict:
     from .models import Document, DocumentChunk
     
     try:
+        logger.info(f"Starting document processing for document_id={document_id}")
+
         # Get the document
         document = Document.objects.get(id=document_id)
-        
+
         # Update status to "processing"
         document.status = 'processing'
         document.save()
-        
+
         # Update task state
         self.update_state(state='PROCESSING', meta={'current': 'Extracting chunks with page numbers...'})
-        
+
         # Step 1: Extract chunks with page numbers
         file_path = document.file.path
         chunks_with_pages = extract_chunks_with_pages(file_path)
-        
+
         if not chunks_with_pages:
             raise ValueError("No text could be extracted from the PDF. It may be image-based or empty.")
-        
+
+        total_chars = sum(len(item['text']) for item in chunks_with_pages)
+        logger.info(f"Text extracted: {total_chars} characters")
+        logger.info(f"Created {len(chunks_with_pages)} chunks")
+
         # Separate texts for embedding
         chunks_text = [item['text'] for item in chunks_with_pages]
-        
+
         # Update task state
         self.update_state(state='PROCESSING', meta={'current': f'Generating embeddings for {len(chunks_text)} chunks...'})
-        
+
         # Step 2: Generate embeddings
-        embeddings = _get_embedding_model().encode(chunks_text, show_progress_bar=False)
-        
+        embeddings = _get_embedding_model().encode(
+            chunks_text,
+            batch_size=8,
+            show_progress_bar=False,
+        )
+        logger.info(f"Embedded {len(chunks_text)}/{len(chunks_text)} chunks")
+
         # Step 3: Bulk create DocumentChunk objects
         chunk_objects = [
             DocumentChunk(
@@ -94,7 +109,9 @@ def process_document_task(self, document_id: int) -> dict:
             
         document.error_message = None
         document.save()
-        
+
+        logger.info(f"Document processing complete: {len(chunk_objects)} chunks saved")
+
         return {
             'status': 'success',
             'document_id': document_id,
