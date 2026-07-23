@@ -1,15 +1,14 @@
 import logging
-import os
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.db.models import Count
+from django.conf import settings
 import json
 
 logger = logging.getLogger(__name__)
-IS_PRODUCTION = os.getenv('ENVIRONMENT') == 'production'
 
 from .models import Document, ChatConversation, ChatMessage, Collection
 from .serializers import (
@@ -66,15 +65,14 @@ class DocumentUploadView(generics.CreateAPIView):
         document = serializer.instance
 
         try:
-            # In development: run task synchronously (CELERY_TASK_ALWAYS_EAGER=True)
-            # In production: queue task to Redis/Celery broker
-            if IS_PRODUCTION:
-                task = process_document_task.delay(document.id)
-                task_id = task.id
-            else:
-                # Development: execute synchronously
+            # CELERY_TASK_ALWAYS_EAGER=True: run synchronously in-process (no broker/worker needed)
+            # CELERY_TASK_ALWAYS_EAGER=False: queue task to Redis/Celery broker for a worker to pick up
+            if settings.CELERY_TASK_ALWAYS_EAGER:
                 task = process_document_task.apply(args=[document.id])
                 task_id = task.id if hasattr(task, 'id') else 'sync'
+            else:
+                task = process_document_task.delay(document.id)
+                task_id = task.id
 
             return Response(
                 {

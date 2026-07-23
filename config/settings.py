@@ -248,9 +248,9 @@ REDIS_URL = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379')
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 
-# If no REDIS_URL is configured, assume local development and run tasks
-# synchronously so the app works without a broker.
-CELERY_TASK_ALWAYS_EAGER = os.environ.get('REDIS_URL') is None
+CELERY_TASK_ALWAYS_EAGER = os.environ.get(
+    'CELERY_TASK_ALWAYS_EAGER', 'False'
+).lower() == 'true'
 CELERY_TASK_EAGER_PROPAGATES = True
 
 CELERY_ACCEPT_CONTENT = ['json']
